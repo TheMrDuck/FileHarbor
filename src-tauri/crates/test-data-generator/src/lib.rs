@@ -1,4 +1,4 @@
-//! Test Data Generator for File Organizer
+//! Test Data Generator for FileHarbor
 //!
 //! Generates deterministic, realistic filesystem test datasets with ground truth manifests
 //! for QA, integration testing, performance testing, and regression testing.

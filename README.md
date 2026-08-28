@@ -1,4 +1,4 @@
-# File Organizer — Phase 1
+# FileHarbor — Phase 1
 
 A safe filesystem analysis and cleanup utility for Windows/macOS/Linux.
 Phase 1 finds **objective facts** about your files — exact duplicates and

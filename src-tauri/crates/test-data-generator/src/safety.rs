@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use std::path::{Path, PathBuf};
+use anyhow::Result;
+use std::path::Path;
 use std::fs;
 
 /// Check if a path is dangerous (system directories, user home, etc.)
@@ -231,8 +231,10 @@ impl SafeCleanup {
 }
 
 #[cfg(test)]
+#[allow(unused_imports)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tempfile::tempdir;
     use std::fs;
 

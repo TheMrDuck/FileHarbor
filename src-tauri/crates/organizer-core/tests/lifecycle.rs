@@ -161,7 +161,7 @@ fn quarantine_partial_failure_reports_each_file() {
         use std::sync::Arc;
 
         let (s, guard) = setup();
-        let qroot = guard.path().join("Quarantine");
+    let qroot = guard.path().join("Quarantine");
         let root = temp_root("q-partial");
         write_file(&root, "movable.txt", b"movable");
         let locked = write_file(&root, "locked.txt", b"locked by another process");
@@ -272,7 +272,7 @@ fn cross_volume_move_verifies_before_removing_original() {
     // Simulate a copy+verify+delete flow where verification fails:
     // force an expected size mismatch through a corrupted destination.
     let (s, guard) = setup();
-    let qroot = guard.path().join("Quarantine");
+    let _qroot = guard.path().join("Quarantine");
     let root = temp_root("q-crossvol");
     let src = write_file(&root, "video.mkv", vec![7u8; 4096].as_slice());
 

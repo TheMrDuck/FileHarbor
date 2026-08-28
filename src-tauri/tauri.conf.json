@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "File Organizer",
+  "productName": "FileHarbor",
   "version": "0.1.0",
-  "identifier": "com.fileorganizer.app",
+  "identifier": "com.fileharbor.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -10,9 +10,9 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
+"windows": [
       {
-        "title": "File Organizer",
+        "title": "FileHarbor",
         "width": 1200,
         "height": 800,
         "minWidth": 900,

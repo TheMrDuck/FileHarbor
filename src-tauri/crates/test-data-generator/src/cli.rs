@@ -7,10 +7,10 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-/// Test Data Generator for File Organizer
+/// Test Data Generator for FileHarbor
 #[derive(Parser)]
 #[command(name = "testgen")]
-#[command(about = "Generate deterministic test datasets for File Organizer QA testing")]
+#[command(about = "Generate deterministic test datasets for FileHarbor QA testing")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]

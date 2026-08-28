@@ -1,5 +1,5 @@
 use crate::manifest::{FileCategory, FileRecord, Manifest};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
@@ -348,9 +348,9 @@ pub fn quick_verify<P: AsRef<std::path::Path>>(manifest_path: P) -> Result<bool>
 }
 
 #[cfg(test)]
+#[allow(unused_imports)]
 mod tests {
     use super::*;
-    use crate::content::ContentGenerator;
     use crate::generator::TestDataGenerator;
     use crate::manifest::{FileCategory, FileRecord, Manifest, ScenarioType};
     use crate::safety::AtomicManifestWriter;

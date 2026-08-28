@@ -85,7 +85,7 @@ export default function App() {
       <nav className="sidebar" aria-label="Main navigation">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          <h1>File Organizer</h1>
+          <h1>FileHarbor</h1>
         </div>
         <ul>
           {navItems.map((item) => (

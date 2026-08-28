@@ -1,6 +1,6 @@
 use crate::content::{ContentGenerator, ContentType};
 use crate::manifest::{FileCategory, FileRecord, Manifest, ScenarioType};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
 use std::collections::HashMap;

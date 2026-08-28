@@ -14,8 +14,8 @@ fn main() {
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
-            let db_path = app_data_dir.join("file-organizer.db");
-            let quarantine_root = app_data_dir.join("Quarantine");
+            let db_path = app_data_dir.join("fileharbor.db");
+            let quarantine_root = app_data_dir.join("FileHarbor");
             std::fs::create_dir_all(&quarantine_root)?;
 
             organizer_core::logutil::init_file_logging(&app_data_dir);
@@ -57,7 +57,7 @@ fn main() {
             commands::get_settings,
             commands::save_settings
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running file organizer");
+.run(tauri::generate_context!())
+        .expect("error while running FileHarbor");
 }
 
