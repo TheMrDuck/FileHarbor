@@ -1,0 +1,18 @@
+{
+  "id": "normal-1293",
+  "items": [
+    {"name":"eta","value":273489,"timestamp":1787874211,"active":true,"count":879,"ratio":0.0791},
+    {"name":"tau","value":236824,"timestamp":1787874211,"active":false,"count":174,"ratio":0.8073},
+    {"name":"iota","value":659977,"timestamp":1787874211,"active":false,"count":349,"ratio":0.9227},
+    {"name":"theta","value":775230,"timestamp":1787874211,"active":false,"count":476,"ratio":0.8011},
+    {"name":"delta","value":792927,"timestamp":1787874211,"active":false,"count":836,"ratio":0.9065},
+    {"name":"omega","value":762978,"timestamp":1787874211,"active":false,"count":931,"ratio":0.9132},
+    {"name":"eta","value":738746,"timestamp":1787874211,"active":true,"count":945,"ratio":0.3057},
+    {"name":"mu","value":156536,"timestamp":1787874211,"active":true,"count":572,"ratio":0.5629},
+    {"name":"epsilon","value":722522,"timestamp":1787874211,"active":true,"count":715,"ratio":0.8459},
+    {"name":"mu","value":299607,"timestamp":1787874211,"active":true,"count":648,"ratio":0.7414},
+    {"name":"zeta","value":604894,"timestamp":1787874211,"active":false,"count":699,"ratio":0.3366},
+    {"name":"pi","value":283748,"timestamp":1787874211,"active":false,"count":239,"ratio":0.8047},
+    {"name":"beta","value":938331,"timestamp":1787874211,"active":true,"count":805,"ratio":0.5734},
+  ]
+}

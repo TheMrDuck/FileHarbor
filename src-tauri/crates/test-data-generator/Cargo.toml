@@ -1,0 +1,28 @@
+[package]
+name = "test-data-generator"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "testgen"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rand = { version = "0.8", features = ["std_rng"] }
+rayon = "1.10"
+indicatif = "0.17"
+walkdir = "2"
+dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+tempfile = "3"
+csv = "1.3"
+byteorder = "1.5"
+ctrlc = "3"
+
+[dev-dependencies]
+tempfile = "3"

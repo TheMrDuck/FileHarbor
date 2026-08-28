@@ -1,0 +1,28 @@
+{
+  "id": "normal-851",
+  "items": [
+    {"name":"nu","value":705495,"timestamp":1787874209,"active":true,"count":143,"ratio":0.3479},
+    {"name":"eta","value":476161,"timestamp":1787874209,"active":false,"count":302,"ratio":0.2857},
+    {"name":"theta","value":579177,"timestamp":1787874209,"active":false,"count":821,"ratio":0.3546},
+    {"name":"delta","value":54335,"timestamp":1787874209,"active":false,"count":103,"ratio":0.8073},
+    {"name":"alpha","value":907785,"timestamp":1787874209,"active":true,"count":818,"ratio":0.8838},
+    {"name":"mu","value":781299,"timestamp":1787874209,"active":true,"count":773,"ratio":0.3668},
+    {"name":"eta","value":806825,"timestamp":1787874209,"active":true,"count":596,"ratio":0.1928},
+    {"name":"omega","value":674058,"timestamp":1787874209,"active":false,"count":153,"ratio":0.5449},
+    {"name":"omega","value":722493,"timestamp":1787874209,"active":false,"count":285,"ratio":0.5325},
+    {"name":"omega","value":806742,"timestamp":1787874209,"active":true,"count":673,"ratio":0.7702},
+    {"name":"sigma","value":590356,"timestamp":1787874209,"active":false,"count":82,"ratio":0.7651},
+    {"name":"chi","value":123518,"timestamp":1787874209,"active":false,"count":959,"ratio":0.2787},
+    {"name":"mu","value":635563,"timestamp":1787874209,"active":true,"count":398,"ratio":0.3075},
+    {"name":"omega","value":3204,"timestamp":1787874209,"active":false,"count":283,"ratio":0.5177},
+    {"name":"zeta","value":389818,"timestamp":1787874209,"active":true,"count":779,"ratio":0.7510},
+    {"name":"nu","value":649912,"timestamp":1787874209,"active":true,"count":846,"ratio":0.4819},
+    {"name":"psi","value":557285,"timestamp":1787874209,"active":true,"count":455,"ratio":0.7627},
+    {"name":"upsilon","value":787745,"timestamp":1787874209,"active":false,"count":653,"ratio":0.0435},
+    {"name":"sigma","value":100328,"timestamp":1787874209,"active":false,"count":611,"ratio":0.4666},
+    {"name":"sigma","value":884470,"timestamp":1787874209,"active":true,"count":743,"ratio":0.2173},
+    {"name":"zeta","value":369113,"timestamp":1787874209,"active":true,"count":732,"ratio":0.9637},
+    {"name":"gamma","value":877554,"timestamp":1787874209,"active":false,"count":307,"ratio":0.8243},
+    {"name":"iota","value":857658,"timestamp":1787874209,"active":true,"count":30,"ratio":0.8442},
+  ]
+}

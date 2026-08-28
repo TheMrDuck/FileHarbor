@@ -1,0 +1,20 @@
+{
+  "id": "normal-326",
+  "items": [
+    {"name":"tau","value":484746,"timestamp":1787874207,"active":false,"count":852,"ratio":0.5886},
+    {"name":"lambda","value":109177,"timestamp":1787874207,"active":true,"count":327,"ratio":0.8841},
+    {"name":"beta","value":745767,"timestamp":1787874207,"active":true,"count":731,"ratio":0.1185},
+    {"name":"psi","value":452187,"timestamp":1787874207,"active":false,"count":922,"ratio":0.7920},
+    {"name":"nu","value":205167,"timestamp":1787874207,"active":false,"count":507,"ratio":0.5004},
+    {"name":"tau","value":318413,"timestamp":1787874207,"active":false,"count":330,"ratio":0.0458},
+    {"name":"gamma","value":613868,"timestamp":1787874207,"active":false,"count":992,"ratio":0.4582},
+    {"name":"rho","value":846656,"timestamp":1787874207,"active":true,"count":658,"ratio":0.6547},
+    {"name":"psi","value":257904,"timestamp":1787874207,"active":true,"count":520,"ratio":0.8122},
+    {"name":"rho","value":307542,"timestamp":1787874207,"active":true,"count":134,"ratio":0.4677},
+    {"name":"phi","value":125692,"timestamp":1787874207,"active":false,"count":960,"ratio":0.5057},
+    {"name":"omicron","value":76357,"timestamp":1787874207,"active":true,"count":760,"ratio":0.2777},
+    {"name":"xi","value":509142,"timestamp":1787874207,"active":false,"count":483,"ratio":0.6021},
+    {"name":"theta","value":999260,"timestamp":1787874207,"active":true,"count":452,"ratio":0.5283},
+    {"name":"theta","value":219519,"timestamp":1787874207,"active":false,"count":452,"ratio":0.5124},
+  ]
+}

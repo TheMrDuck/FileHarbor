@@ -1,0 +1,15 @@
+{
+  "id": "unicode-3143",
+  "items": [
+    {"name":"xi","value":218460,"timestamp":1787874218,"active":true,"count":284,"ratio":0.0921},
+    {"name":"chi","value":966646,"timestamp":1787874218,"active":true,"count":491,"ratio":0.7824},
+    {"name":"iota","value":713722,"timestamp":1787874218,"active":true,"count":329,"ratio":0.8924},
+    {"name":"zeta","value":589600,"timestamp":1787874218,"active":false,"count":162,"ratio":0.8262},
+    {"name":"nu","value":376990,"timestamp":1787874218,"active":true,"count":259,"ratio":0.7206},
+    {"name":"xi","value":504662,"timestamp":1787874218,"active":true,"count":485,"ratio":0.4967},
+    {"name":"rho","value":813491,"timestamp":1787874218,"active":true,"count":560,"ratio":0.4072},
+    {"name":"iota","value":516412,"timestamp":1787874218,"active":true,"count":123,"ratio":0.3382},
+    {"name":"delta","value":65890,"timestamp":1787874218,"active":true,"count":203,"ratio":0.3315},
+    {"name":"epsilon","value":921466,"timestamp":1787874218,"active":false,"count":373,"ratio":0.1657},
+  ]
+}

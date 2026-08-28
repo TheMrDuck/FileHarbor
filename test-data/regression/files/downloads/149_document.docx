@@ -1,0 +1,16 @@
+{
+  "id": "master-149",
+  "items": [
+    {"name":"beta","value":620260,"timestamp":1787874216,"active":false,"count":238,"ratio":0.4924},
+    {"name":"iota","value":684637,"timestamp":1787874216,"active":false,"count":145,"ratio":0.4122},
+    {"name":"rho","value":842151,"timestamp":1787874216,"active":true,"count":92,"ratio":0.1914},
+    {"name":"epsilon","value":198004,"timestamp":1787874216,"active":true,"count":269,"ratio":0.6871},
+    {"name":"gamma","value":775144,"timestamp":1787874216,"active":true,"count":27,"ratio":0.3917},
+    {"name":"delta","value":969198,"timestamp":1787874216,"active":false,"count":624,"ratio":0.0812},
+    {"name":"delta","value":912637,"timestamp":1787874216,"active":true,"count":514,"ratio":0.8900},
+    {"name":"tau","value":558699,"timestamp":1787874216,"active":true,"count":98,"ratio":0.2136},
+    {"name":"omicron","value":646063,"timestamp":1787874216,"active":true,"count":86,"ratio":0.3189},
+    {"name":"zeta","value":142826,"timestamp":1787874216,"active":false,"count":32,"ratio":0.2229},
+    {"name":"rho","value":852519,"timestamp":1787874216,"active":true,"count":9,"ratio":0.0466},
+  ]
+}
