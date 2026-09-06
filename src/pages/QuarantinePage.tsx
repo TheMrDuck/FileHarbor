@@ -9,6 +9,12 @@ interface Props {
 
 type ConflictChoice = "keep_existing" | "new_name" | "cancel";
 
+interface BackupStatusInfo {
+  hasBackup: boolean;
+  backupSetName: string;
+  snapshotLabel: string;
+}
+
 export default function QuarantinePage({ showToast }: Props) {
   const [items, setItems] = useState<QuarantineItem[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -18,12 +24,42 @@ export default function QuarantinePage({ showToast }: Props) {
     { item_id: number; original_path: string }[] | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<Map<number, BackupStatusInfo>>(new Map());
 
-  const load = useCallback(async () => {
+const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await api.quarantineItems());
+      const quarantineItems = await api.quarantineItems();
+      setItems(quarantineItems);
       setSelected(new Set());
+      
+      // Check backup status for each item
+      const statusMap = new Map<number, BackupStatusInfo>();
+      for (const item of quarantineItems) {
+        try {
+          const backupInfo = await api.checkFileBackupStatus(item.original_path);
+          if (backupInfo) {
+            statusMap.set(item.id, {
+              hasBackup: true,
+              backupSetName: backupInfo[0],
+              snapshotLabel: backupInfo[1],
+            });
+          } else {
+            statusMap.set(item.id, {
+              hasBackup: false,
+              backupSetName: "",
+              snapshotLabel: "",
+            });
+          }
+        } catch {
+          statusMap.set(item.id, {
+            hasBackup: false,
+            backupSetName: "",
+            snapshotLabel: "",
+          });
+        }
+      }
+      setBackupStatus(statusMap);
     } finally {
       setLoading(false);
     }
@@ -107,9 +143,21 @@ export default function QuarantinePage({ showToast }: Props) {
     }
   };
 
-  const deleteTotal = stored
+const deleteTotal = stored
     .filter((i) => selected.has(i.id))
     .reduce((sum, i) => sum + i.size_bytes, 0);
+
+  const deletedItemsBackupStatus = stored
+    .filter((i) => selected.has(i.id))
+    .map((item) => {
+      const bs = backupStatus.get(item.id);
+      return {
+        path: item.original_path,
+        hasBackup: bs?.hasBackup ?? false,
+        backupSetName: bs?.backupSetName ?? "",
+        snapshotLabel: bs?.snapshotLabel ?? "",
+      };
+    });
 
   if (loading) return <p>Loading quarantine…</p>;
 
@@ -159,56 +207,71 @@ export default function QuarantinePage({ showToast }: Props) {
             </div>
           </div>
 
-          <table className="file-table">
+<table className="file-table">
             <thead>
               <tr>
                 <th scope="col">Select</th>
                 <th scope="col">Original location</th>
                 <th scope="col">Size</th>
                 <th scope="col">Quarantined</th>
+                <th scope="col">Backup</th>
                 <th scope="col"></th>
               </tr>
             </thead>
             <tbody>
-              {stored.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(item.id)}
-                      onChange={() =>
-                        setSelected((prev) => {
-                          const n = new Set(prev);
-                          if (n.has(item.id)) n.delete(item.id);
-                          else n.add(item.id);
-                          return n;
-                        })
-                      }
-                      aria-label={`Select ${item.original_path}`}
-                    />
-                  </td>
-                  <td className="mono truncated" title={item.original_path}>
-                    {item.original_path}
-                  </td>
-                  <td>{formatBytes(item.size_bytes)}</td>
-                  <td>{formatDate(item.quarantined_at_ms)}</td>
-                  <td>
-                    <button
-                      className="btn btn-ghost btn-small"
-                      disabled={busy}
-                      onClick={() => startRestore([item.id])}
-                    >
-                      Restore
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {stored.map((item) => {
+                const bs = backupStatus.get(item.id);
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(item.id)}
+                        onChange={() =>
+                          setSelected((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(item.id)) n.delete(item.id);
+                            else n.add(item.id);
+                            return n;
+                          })
+                        }
+                        aria-label={`Select ${item.original_path}`}
+                      />
+                    </td>
+                    <td className="mono truncated" title={item.original_path}>
+                      {item.original_path}
+                    </td>
+                    <td>{formatBytes(item.size_bytes)}</td>
+                    <td>{formatDate(item.quarantined_at_ms)}</td>
+                    <td>
+                      {bs?.hasBackup ? (
+                        <span className="badge backup-protected">
+                          ✓ {bs.backupSetName} ({bs.snapshotLabel})
+                        </span>
+                      ) : (
+                        <span className="badge backup-never_backed_up">
+                          No backup
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-small"
+                        disabled={busy}
+                        onClick={() => startRestore([item.id])}
+                      >
+                        Restore
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </>
       )}
 
-      {confirmDelete && (
+{confirmDelete && (
         <ConfirmDialog
           title={`Permanently delete ${selected.size} file(s)?`}
           body={
@@ -216,6 +279,27 @@ export default function QuarantinePage({ showToast }: Props) {
               <p>
                 Total size: <strong>{formatBytes(deleteTotal)}</strong>
               </p>
+              {deletedItemsBackupStatus.length > 0 && (
+                <div className="backup-status-warning">
+                  <h4>Backup status of selected files:</h4>
+                  <ul>
+                    {deletedItemsBackupStatus.map((bs) => (
+                      <li key={bs.path} className="mono">
+                        {bs.path}
+                        {bs.hasBackup ? (
+                          <span className="badge backup-protected">
+                            ✓ {bs.backupSetName} ({bs.snapshotLabel})
+                          </span>
+                        ) : (
+                          <span className="badge backup-never_backed_up">
+                            No verified backup
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <p className="danger-text">
                 This action cannot be undone. The files will be removed from the
                 quarantine area and will no longer be recoverable.

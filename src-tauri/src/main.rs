@@ -35,7 +35,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+.invoke_handler(tauri::generate_handler![
             commands::start_scan,
             commands::cancel_scan,
             commands::get_recent_sessions,
@@ -55,7 +55,30 @@ fn main() {
             commands::add_exclusion,
             commands::remove_exclusion,
             commands::get_settings,
-            commands::save_settings
+            commands::save_settings,
+            commands::create_backup_set,
+            commands::list_backup_sets,
+            commands::get_backup_set,
+            commands::update_backup_set,
+            commands::delete_backup_set,
+            commands::get_backup_runs,
+            commands::get_backup_snapshots,
+            commands::validate_backup_destination,
+            commands::plan_backup,
+            commands::start_backup,
+            commands::cancel_backup,
+            commands::get_backup_progress,
+            commands::verify_backup,
+            commands::get_backup_health,
+            commands::restore_from_backup,
+            commands::get_restore_preview,
+            commands::retry_failed_backup_items,
+            commands::list_backup_destinations,
+            commands::check_backup_destination_safety,
+            commands::check_file_backup_status,
+            commands::get_file_backup_status,
+            commands::detect_interrupted_backups,
+            commands::resume_backup_run
         ])
 .run(tauri::generate_context!())
         .expect("error while running FileHarbor");

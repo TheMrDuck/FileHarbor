@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, formatBytes, formatDate } from "../api";
+import type { FileRecord, FileBackupStatus } from "../types";
 
 interface Props {
   sessionId: number;
@@ -8,7 +9,7 @@ interface Props {
 const PAGE_SIZE = 100;
 
 export default function AllFilesPage({ sessionId }: Props) {
-  const [items, setItems] = useState<Awaited<ReturnType<typeof api.listFiles>>["items"]>([]);
+  const [items, setItems] = useState<FileRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
@@ -16,6 +17,7 @@ export default function AllFilesPage({ sessionId }: Props) {
   const [sort, setSort] = useState("name");
   const [ascending, setAscending] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [backupStatusMap, setBackupStatusMap] = useState<Map<number, FileBackupStatus>>(new Map());
 
   const load = useCallback(
     async (p: number) => {
@@ -33,6 +35,17 @@ export default function AllFilesPage({ sessionId }: Props) {
         setItems(res.items);
         setTotal(res.total);
         setPage(p);
+        
+        // Fetch backup status for the loaded files
+        if (res.items.length > 0) {
+          const fileIds = res.items.map(f => f.id);
+          const backupStatuses = await api.getFileBackupStatus({ session_id: sessionId, file_ids: fileIds });
+          const newMap = new Map<number, FileBackupStatus>();
+          backupStatuses.forEach(bs => newMap.set(bs.file_id, bs));
+          setBackupStatusMap(newMap);
+        } else {
+          setBackupStatusMap(new Map());
+        }
       } finally {
         setLoading(false);
       }
@@ -108,26 +121,40 @@ export default function AllFilesPage({ sessionId }: Props) {
                 <th scope="col">Size</th>
                 <th scope="col">Modified</th>
                 <th scope="col">State</th>
+                <th scope="col">Backup</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((f) => (
-                <tr key={f.id}>
-                  <td className="mono">{f.file_name}</td>
-                  <td className="mono truncated" title={f.path}>{f.path}</td>
-                  <td>{f.is_empty ? "empty" : formatBytes(f.size_bytes)}</td>
-                  <td>{formatDate(f.modified_at_ms)}</td>
-                  <td>
-                    {f.is_empty ? (
-                      <span className="badge status-empty">Empty</span>
-                    ) : f.hash_status === "computed" ? (
-                      <span className="badge status-completed">Analyzed</span>
-                    ) : (
-                      <span className="badge">{f.scan_status.replace(/_/g, " ")}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {items.map((f) => {
+                const bs = backupStatusMap.get(f.id);
+                return (
+                  <tr key={f.id}>
+                    <td className="mono">{f.file_name}</td>
+                    <td className="mono truncated" title={f.path}>{f.path}</td>
+                    <td>{f.is_empty ? "empty" : formatBytes(f.size_bytes)}</td>
+                    <td>{formatDate(f.modified_at_ms)}</td>
+                    <td>
+                      {f.is_empty ? (
+                        <span className="badge status-empty">Empty</span>
+                      ) : f.hash_status === "computed" ? (
+                        <span className="badge status-completed">Analyzed</span>
+                      ) : (
+                        <span className="badge">{f.scan_status.replace(/_/g, " ")}</span>
+                      )}
+                    </td>
+                    <td>
+                      {bs ? (
+                        <span className={`badge backup-${bs.status}`}>
+                          {bs.status.replace(/_/g, " ")}
+                          {bs.backup_set_name && ` (${bs.backup_set_name})`}
+                        </span>
+                      ) : (
+                        <span className="badge backup-unknown">Unknown</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <nav className="pager" aria-label="File pages">

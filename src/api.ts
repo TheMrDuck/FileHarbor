@@ -2,14 +2,29 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   BatchReport,
+  BackupDestination,
+  BackupHealth,
+  BackupPlan,
+  BackupProgress,
+  BackupRun,
+  BackupSet,
+  BackupSnapshot,
+  DestinationValidation,
   DuplicateGroup,
   FileOperation,
   FileRecord,
+  FileBackupStatus,
+  GetFileBackupStatusRequest,
   OperationItem,
   QuarantineItem,
   RestorePreview,
+  RestoreResult,
+  RestoreFromBackupRequest,
   ScanSession,
   ScanSummary,
+  BackupSchedule,
+  RetentionPolicy,
+  VerificationMode,
 } from "./types";
 
 export const api = {
@@ -75,6 +90,61 @@ export const api = {
   settings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) =>
     invoke<void>("save_settings", { settings }),
+
+  // Backup sets
+  createBackupSet: (request: {
+    name: string;
+    source_path: string;
+    destination_path: string;
+    schedule: BackupSchedule;
+    retention_policy: RetentionPolicy;
+    verification_mode: VerificationMode;
+  }) => invoke<BackupSet>("create_backup_set", { request }),
+  listBackupSets: () => invoke<BackupSet[]>("list_backup_sets"),
+  getBackupSet: (setId: number) => invoke<BackupSet | null>("get_backup_set", { setId }),
+  updateBackupSet: (setId: number, request: {
+    name?: string;
+    schedule?: BackupSchedule;
+    retention_policy?: RetentionPolicy;
+    verification_mode?: VerificationMode;
+  }) => invoke<BackupSet>("update_backup_set", { setId, request }),
+  deleteBackupSet: (setId: number, deleteData?: boolean) => invoke<void>("delete_backup_set", { setId, deleteData }),
+
+  // Backup runs & snapshots
+  getBackupRuns: (backupSetId: number, limit?: number) => invoke<BackupRun[]>("get_backup_runs", { backupSetId, limit }),
+  getBackupSnapshots: (backupSetId: number) => invoke<BackupSnapshot[]>("get_backup_snapshots", { backupSetId }),
+
+  // Destination validation
+  validateBackupDestination: (sourcePath: string, destinationPath: string) =>
+    invoke<DestinationValidation>("validate_backup_destination", { sourcePath, destinationPath }),
+
+  // Planning & execution
+  planBackup: (backupSetId: number) => invoke<BackupPlan>("plan_backup", { backupSetId }),
+  startBackup: (backupSetId: number) => invoke<void>("start_backup", { backupSetId }),
+  cancelBackup: (runId: number) => invoke<void>("cancel_backup", { runId }),
+  getBackupProgress: (runId: number) => invoke<BackupProgress | null>("get_backup_progress", { runId }),
+  verifyBackup: (runId: number) => invoke<{ runId: number; snapshotId: number; totalFiles: number; verifiedFiles: number; failedFiles: number; missingFiles: number; errors: { relativePath: string; error: string; expectedHash: string | null; actualHash: string | null }[] }>("verify_backup", { runId }),
+  getBackupHealth: () => invoke<BackupHealth>("get_backup_health"),
+
+  // Restore
+  restoreFromBackup: (request: RestoreFromBackupRequest) => invoke<RestoreResult>("restore_from_backup", { request }),
+  getRestorePreview: (snapshotId: number, destinationRoot: string) => invoke<RestorePreview>("get_restore_preview", { snapshotId, destinationRoot }),
+  retryFailedBackupItems: (runId: number) => invoke<void>("retry_failed_backup_items", { runId }),
+
+  // Destinations
+  listBackupDestinations: () => invoke<BackupDestination[]>("list_backup_destinations"),
+
+  // File backup status
+  getFileBackupStatus: (request: GetFileBackupStatusRequest) =>
+    invoke<FileBackupStatus[]>("get_file_backup_status", { request }),
+
+  // Backup destination safety
+  checkBackupDestinationSafety: (path: string) =>
+    invoke<string | null>("check_backup_destination_safety", { path }),
+
+  // Check if a file has a verified backup
+  checkFileBackupStatus: (file_path: string) =>
+    invoke<[string, string] | null>("check_file_backup_status", { file_path }),
 };
 
 export function formatBytes(bytes: number): string {

@@ -12,6 +12,13 @@ import AllFilesPage from "./pages/AllFilesPage";
 import QuarantinePage from "./pages/QuarantinePage";
 import OperationsPage from "./pages/OperationsPage";
 import SettingsPage from "./pages/SettingsPage";
+import BackupsPage from "./pages/BackupsPage";
+import BackupCreatePage from "./pages/BackupCreatePage";
+import BackupRunPage from "./pages/BackupRunPage";
+import BackupDetailsPage from "./pages/BackupDetailsPage";
+import BackupHealthPage from "./pages/BackupHealthPage";
+import BackupRestorePage from "./pages/BackupRestorePage";
+import BackupHistoryPage from "./pages/BackupHistoryPage";
 
 export type Page =
   | "scan"
@@ -22,7 +29,14 @@ export type Page =
   | "files"
   | "quarantine"
   | "operations"
-  | "settings";
+  | "settings"
+  | "backups"
+  | "backup-create"
+  | "backup-run"
+  | "backup-details"
+  | "backup-health"
+  | "backup-restore"
+  | "backup-history";
 
 interface ScanState {
   sessionId: number;
@@ -76,6 +90,7 @@ export default function App() {
     { id: "quarantine", label: "Quarantine" },
     { id: "operations", label: "Operation History" },
     { id: "settings", label: "Settings" },
+    { id: "backups", label: "Backups" },
   ];
 
   const phaseLabel = scan?.progress ? PHASE_LABELS[scan.progress.phase] ?? scan.progress.phase : "";
@@ -129,6 +144,13 @@ export default function App() {
         {page === "quarantine" && <QuarantinePage showToast={showToast} />}
         {page === "operations" && <OperationsPage />}
         {page === "settings" && <SettingsPage />}
+        {page === "backups" && <BackupsPage onNavigate={(p) => setPage(p as Page)} />}
+        {page === "backup-create" && <BackupCreatePage onCancel={() => setPage("backups" as Page)} />}
+        {page === "backup-run" && <BackupRunPage onNavigate={(p) => setPage(p as Page)} />}
+        {page === "backup-details" && <BackupDetailsPage />}
+        {page === "backup-health" && <BackupHealthPage />}
+        {page === "backup-restore" && <BackupRestorePage onNavigate={(p) => setPage(p as Page)} />}
+        {page === "backup-history" && <BackupHistoryPage onNavigate={(p) => setPage(p as Page)} />}
       </main>
 
       {scan && (
