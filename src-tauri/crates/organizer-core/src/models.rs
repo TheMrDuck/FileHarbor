@@ -111,6 +111,10 @@ pub enum OperationKind {
     Quarantine,
     Restore,
     DeletePermanent,
+    Backup,
+    BackupVerify,
+    BackupRestore,
+    BackupCancel,
 }
 
 impl OperationKind {
@@ -119,6 +123,10 @@ impl OperationKind {
             OperationKind::Quarantine => "quarantine",
             OperationKind::Restore => "restore",
             OperationKind::DeletePermanent => "delete_permanent",
+            OperationKind::Backup => "backup",
+            OperationKind::BackupVerify => "backup_verify",
+            OperationKind::BackupRestore => "backup_restore",
+            OperationKind::BackupCancel => "backup_cancel",
         }
     }
 }

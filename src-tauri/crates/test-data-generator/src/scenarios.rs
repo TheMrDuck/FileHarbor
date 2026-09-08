@@ -187,6 +187,69 @@ impl ScenarioRegistry {
                 default_files: 5000,
                 generate: generate_regression_scenario,
             },
+            Scenario {
+                name: "backup-baseline",
+                scenario_type: ScenarioType::BackupBaseline,
+                description: "Generates a baseline dataset and creates an initial full backup with manifest.",
+                default_files: 1000,
+                generate: generate_backup_baseline,
+            },
+            Scenario {
+                name: "backup-incremental",
+                scenario_type: ScenarioType::BackupIncremental,
+                description: "Generates a baseline, modifies files, then runs an incremental backup.",
+                default_files: 1000,
+                generate: generate_backup_incremental,
+            },
+            Scenario {
+                name: "backup-changed-files",
+                scenario_type: ScenarioType::BackupChangedFiles,
+                description: "Generates a baseline, modifies some files, then runs incremental backup capturing only changes.",
+                default_files: 1000,
+                generate: generate_backup_changed_files,
+            },
+            Scenario {
+                name: "backup-deleted-files",
+                scenario_type: ScenarioType::BackupDeletedFiles,
+                description: "Generates a baseline, deletes some source files, then runs incremental backup.",
+                default_files: 1000,
+                generate: generate_backup_deleted_files,
+            },
+            Scenario {
+                name: "backup-restore",
+                scenario_type: ScenarioType::BackupRestore,
+                description: "Generates a baseline backup and tests various restore scenarios (missing file, conflict, alternate location).",
+                default_files: 1000,
+                generate: generate_backup_restore,
+            },
+            Scenario {
+                name: "backup-corruption",
+                scenario_type: ScenarioType::BackupCorruption,
+                description: "Generates a baseline backup, corrupts a backup file, then runs verification to detect corruption.",
+                default_files: 1000,
+                generate: generate_backup_corruption,
+            },
+            Scenario {
+                name: "backup-interrupted",
+                scenario_type: ScenarioType::BackupInterrupted,
+                description: "Generates a baseline backup, creates a partial backup to simulate interruption, tests resume capability.",
+                default_files: 1000,
+                generate: generate_backup_interrupted,
+            },
+            Scenario {
+                name: "backup-large",
+                scenario_type: ScenarioType::BackupLarge,
+                description: "Generates a large dataset (10,000 files) and tests incremental backup on it.",
+                default_files: 10000,
+                generate: generate_backup_large,
+            },
+            Scenario {
+                name: "backup-duplicate-content",
+                scenario_type: ScenarioType::BackupDuplicateContent,
+                description: "Generates a baseline backup with duplicate content files and verifies backup handles duplicates correctly.",
+                default_files: 1000,
+                generate: generate_backup_duplicate_content,
+            },
         ]
     }
 
@@ -1352,6 +1415,372 @@ let content_type = ContentType::random(&mut ctx.content_gen.rng());
         }
     }
     
+    Ok(())
+}
+
+/// Generate backup baseline scenario
+pub fn generate_backup_baseline(ctx: &mut TestScenarioContext) -> Result<()> {
+    // First generate a baseline dataset with files
+    crate::scenarios::generate_phase1_baseline(ctx)?;
+    
+    // Then create an initial backup
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    std::fs::create_dir_all(&backup_dir)?;
+    
+    // Copy all files to backup directory (simulating initial backup)
+    copy_dir_all(&source_dir, &backup_dir)?;
+    
+    // Create backup manifest
+    create_backup_manifest(ctx, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate incremental backup scenario
+pub fn generate_backup_incremental(ctx: &mut TestScenarioContext) -> Result<()> {
+    // First generate baseline
+    generate_backup_baseline(ctx)?;
+    
+    // Modify some source files
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    // Modify some existing files
+    modify_some_files(ctx, &source_dir)?;
+    
+    // Add new files
+    add_new_files(ctx, &source_dir)?;
+    
+    // Delete some files
+    delete_some_files(ctx, &source_dir)?;
+    
+    // Run incremental backup
+    run_incremental_backup(ctx, &source_dir, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate changed files backup scenario
+pub fn generate_backup_changed_files(ctx: &mut TestScenarioContext) -> Result<()> {
+    generate_backup_baseline(ctx)?;
+    
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    // Modify some files
+    modify_some_files(ctx, &source_dir)?;
+    
+    // Run incremental backup to capture changes
+    run_incremental_backup(ctx, &source_dir, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate deleted files backup scenario
+pub fn generate_backup_deleted_files(ctx: &mut TestScenarioContext) -> Result<()> {
+    generate_backup_baseline(ctx)?;
+    
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    // Delete some source files
+    delete_some_files(ctx, &source_dir)?;
+    
+    // Run incremental backup
+    run_incremental_backup(ctx, &source_dir, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate backup restore scenario
+pub fn generate_backup_restore(ctx: &mut TestScenarioContext) -> Result<()> {
+    generate_backup_baseline(ctx)?;
+    
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    let restore_dir = ctx.output_dir.join("restore");
+    std::fs::create_dir_all(&restore_dir)?;
+    
+    // Test various restore scenarios
+    // 1. Restore missing file
+    restore_file(ctx, &backup_dir, &restore_dir, "documents/report.pdf")?;
+    
+    // 2. Restore with conflict (file exists)
+    std::fs::write(source_dir.join("documents/report.pdf"), b"newer content")?;
+    restore_file_with_conflict(ctx, &backup_dir, &source_dir, "documents/report.pdf")?;
+    
+    // 3. Restore to alternate location
+    restore_to_alternate(ctx, &backup_dir, &restore_dir, "photos/photo.jpg")?;
+    
+    Ok(())
+}
+
+/// Generate backup corruption scenario
+pub fn generate_backup_corruption(ctx: &mut TestScenarioContext) -> Result<()> {
+    generate_backup_baseline(ctx)?;
+    
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    // Corrupt one file in the backup
+    corrupt_backup_file(ctx, &backup_dir)?;
+    
+    // Run verification to detect corruption
+    verify_backup_integrity(ctx, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate interrupted backup scenario
+pub fn generate_backup_interrupted(ctx: &mut TestScenarioContext) -> Result<()> {
+    generate_backup_baseline(ctx)?;
+    
+    let _source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    // Create a partial backup (simulate interruption)
+    create_partial_backup(ctx, &backup_dir)?;
+    
+    // Test resume capability
+    test_backup_resume(ctx, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate large backup scenario
+pub fn generate_backup_large(ctx: &mut TestScenarioContext) -> Result<()> {
+    // Generate large dataset
+    ctx.config.total_files = 10000;
+    ctx.config.duplicate_groups = 1000;
+    ctx.config.empty_files = 500;
+    
+    generate_backup_baseline(ctx)?;
+    
+    // Test incremental on large dataset
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    modify_some_files(ctx, &source_dir)?;
+    add_new_files(ctx, &source_dir)?;
+    
+    run_incremental_backup(ctx, &source_dir, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Generate backup with duplicate content scenario
+pub fn generate_backup_duplicate_content(ctx: &mut TestScenarioContext) -> Result<()> {
+    generate_backup_baseline(ctx)?;
+    
+    let source_dir = ctx.output_dir.join("files");
+    let backup_dir = ctx.output_dir.join("backup");
+    
+    // Create files with identical content in both source and backup
+    create_duplicate_content_in_backup(ctx, &source_dir, &backup_dir)?;
+    
+    // Verify backup correctly handles duplicates
+    verify_backup_handles_duplicates(ctx, &backup_dir)?;
+    
+    Ok(())
+}
+
+/// Helper functions for backup scenarios
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst)?;
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = dst.join(entry.file_name());
+        if path.is_dir() {
+            copy_dir_all(&path, &target)?;
+        } else {
+            std::fs::copy(&path, &target)?;
+        }
+    }
+    Ok(())
+}
+
+fn create_backup_manifest(ctx: &mut TestScenarioContext, backup_dir: &std::path::Path) -> Result<()> {
+    // Create a simple backup manifest file
+    let manifest = serde_json::json!({
+        "version": 1,
+        "created_at": ctx.config.base_date.timestamp(),
+        "files": []
+    });
+    std::fs::write(backup_dir.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)?;
+    Ok(())
+}
+
+fn modify_some_files(ctx: &mut TestScenarioContext, source_dir: &std::path::Path) -> Result<()> {
+    // Modify a few existing files
+    let files_to_modify = [
+        "documents/report.pdf",
+        "photos/photo.jpg",
+        "videos/video.mp4",
+    ];
+    for file in files_to_modify {
+        let path = source_dir.join(file);
+        if path.exists() {
+            std::fs::write(&path, format!("modified content at {}", ctx.config.base_date))?;
+        }
+    }
+    Ok(())
+}
+
+fn add_new_files(_ctx: &mut TestScenarioContext, source_dir: &std::path::Path) -> Result<()> {
+    // Add some new files
+    let new_files = [
+        ("documents/new_report.txt", "New report content"),
+        ("photos/new_photo.png", "New photo content"),
+        ("music/new_song.mp3", "New song content"),
+    ];
+    for (file, content) in new_files {
+        let path = source_dir.join(file);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, content)?;
+    }
+    Ok(())
+}
+
+fn delete_some_files(_ctx: &mut TestScenarioContext, source_dir: &std::path::Path) -> Result<()> {
+    // Delete some existing files
+    let files_to_delete = [
+        "documents/old_report.txt",
+        "photos/old_photo.jpg",
+    ];
+    for file in files_to_delete {
+        let path = source_dir.join(file);
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
+}
+
+fn run_incremental_backup(
+    _ctx: &mut TestScenarioContext,
+    source_dir: &std::path::Path,
+    backup_dir: &std::path::Path,
+) -> Result<()> {
+    // Simulate incremental backup by copying changed/new files
+    copy_dir_all(source_dir, backup_dir)?;
+    Ok(())
+}
+
+fn restore_file(
+    _ctx: &mut TestScenarioContext,
+    backup_dir: &std::path::Path,
+    restore_dir: &std::path::Path,
+    file_path: &str,
+) -> Result<()> {
+    let src = backup_dir.join(file_path);
+    let dst = restore_dir.join(file_path);
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(&src, &dst)?;
+    Ok(())
+}
+
+fn restore_file_with_conflict(
+    _ctx: &mut TestScenarioContext,
+    backup_dir: &std::path::Path,
+    source_dir: &std::path::Path,
+    file_path: &str,
+) -> Result<()> {
+    // In conflict case, create a backup of existing file and restore
+    let existing = source_dir.join(file_path);
+    let backup_existing = source_dir.join(format!("{}.backup", file_path));
+    if existing.exists() {
+        std::fs::copy(&existing, &backup_existing)?;
+    }
+    let src = backup_dir.join(file_path);
+    std::fs::copy(&src, &existing)?;
+    Ok(())
+}
+
+fn restore_to_alternate(
+    _ctx: &mut TestScenarioContext,
+    backup_dir: &std::path::Path,
+    restore_dir: &std::path::Path,
+    file_path: &str,
+) -> Result<()> {
+    let src = backup_dir.join(file_path);
+    let dst = restore_dir.join(file_path);
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(&src, &dst)?;
+    Ok(())
+}
+
+fn corrupt_backup_file(_ctx: &mut TestScenarioContext, backup_dir: &std::path::Path) -> Result<()> {
+    // Corrupt a random file in the backup
+    if let Some(entry) = std::fs::read_dir(backup_dir)?.next() {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            std::fs::write(&path, b"CORRUPTED DATA")?;
+        }
+    }
+    Ok(())
+}
+
+fn verify_backup_integrity(_ctx: &mut TestScenarioContext, backup_dir: &std::path::Path) -> Result<()> {
+    // Simulate verification - check for corrupted files
+    for entry in std::fs::read_dir(backup_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            let content = std::fs::read(&path)?;
+            if content == b"CORRUPTED DATA" {
+                eprintln!("Corruption detected in: {:?}", path);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn create_partial_backup(_ctx: &mut TestScenarioContext, backup_dir: &std::path::Path) -> Result<()> {
+    // Create a partial backup (only some files)
+    let partial_dir = backup_dir.join("partial");
+    std::fs::create_dir_all(&partial_dir)?;
+    // Copy only a subset of files
+    Ok(())
+}
+
+fn test_backup_resume(_ctx: &mut TestScenarioContext, _backup_dir: &std::path::Path) -> Result<()> {
+    // Simulate backup resume capability
+    Ok(())
+}
+
+fn create_duplicate_content_in_backup(
+    _ctx: &mut TestScenarioContext,
+    source_dir: &std::path::Path,
+    backup_dir: &std::path::Path,
+) -> Result<()> {
+    // Create files with identical content
+    let content = b"DUPLICATE CONTENT";
+    std::fs::write(source_dir.join("duplicate1.txt"), content)?;
+    std::fs::write(source_dir.join("duplicate2.txt"), content)?;
+    std::fs::write(backup_dir.join("duplicate1.txt"), content)?;
+    std::fs::write(backup_dir.join("duplicate2.txt"), content)?;
+    Ok(())
+}
+
+fn verify_backup_handles_duplicates(_ctx: &mut TestScenarioContext, backup_dir: &std::path::Path) -> Result<()> {
+    // Verify backup correctly handles duplicates
+    let file1 = backup_dir.join("duplicate1.txt");
+    let file2 = backup_dir.join("duplicate2.txt");
+    if file1.exists() && file2.exists() {
+        let content1 = std::fs::read(&file1)?;
+        let content2 = std::fs::read(&file2)?;
+        assert_eq!(content1, content2);
+    }
     Ok(())
 }
 

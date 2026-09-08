@@ -9,6 +9,12 @@ pub mod manifest;
 pub mod engine;
 pub mod restore;
 pub mod retention;
+pub mod scheduler;
+pub mod cache;
+pub mod discovery;
+pub mod logger;
+pub mod export_import;
+pub mod machine;
 
 pub use errors::{BackupError, ErrorClassification};
 pub use models::*;

@@ -25,4 +25,12 @@ impl CancelToken {
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
+
+    pub fn check(&self) -> Result<(), crate::backup::errors::BackupError> {
+        if self.is_cancelled() {
+            Err(crate::backup::errors::BackupError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
 }

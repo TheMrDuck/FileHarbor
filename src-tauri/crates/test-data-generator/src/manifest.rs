@@ -108,6 +108,34 @@ pub struct Manifest {
     pub files: Vec<FileRecord>,
 }
 
+/// Backup manifest structure (for backup destination)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupManifest {
+    pub schema_version: u32,
+    pub backup_set_id: String,
+    pub snapshot_id: String,
+    pub created_at: String,
+    pub status: String,
+    pub source: ManifestSource,
+    pub files: Vec<ManifestFile>,
+}
+
+/// Source information for a backup
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestSource {
+    pub label: String,
+    pub path: String,
+}
+
+/// File entry in a backup manifest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestFile {
+    pub relative_path: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub verified: bool,
+}
+
 impl Manifest {
     pub fn new(scenario: ScenarioType, seed: u64, root: String) -> Self {
         Self {
@@ -181,6 +209,15 @@ pub enum ScenarioType {
     LockedFiles,
     Permissions,
     Regression,
+    BackupBaseline,
+    BackupIncremental,
+    BackupChangedFiles,
+    BackupDeletedFiles,
+    BackupRestore,
+    BackupCorruption,
+    BackupInterrupted,
+    BackupLarge,
+    BackupDuplicateContent,
 }
 
 impl std::fmt::Display for ScenarioType {
@@ -202,6 +239,15 @@ impl std::fmt::Display for ScenarioType {
             ScenarioType::LockedFiles => "locked-files",
             ScenarioType::Permissions => "permissions",
             ScenarioType::Regression => "regression",
+            ScenarioType::BackupBaseline => "backup-baseline",
+            ScenarioType::BackupIncremental => "backup-incremental",
+            ScenarioType::BackupChangedFiles => "backup-changed-files",
+            ScenarioType::BackupDeletedFiles => "backup-deleted-files",
+            ScenarioType::BackupRestore => "backup-restore",
+            ScenarioType::BackupCorruption => "backup-corruption",
+            ScenarioType::BackupInterrupted => "backup-interrupted",
+            ScenarioType::BackupLarge => "backup-large",
+            ScenarioType::BackupDuplicateContent => "backup-duplicate-content",
         })
     }
 }
@@ -227,6 +273,15 @@ impl std::str::FromStr for ScenarioType {
             "locked-files" => Ok(ScenarioType::LockedFiles),
             "permissions" => Ok(ScenarioType::Permissions),
             "regression" => Ok(ScenarioType::Regression),
+            "backup-baseline" => Ok(ScenarioType::BackupBaseline),
+            "backup-incremental" => Ok(ScenarioType::BackupIncremental),
+            "backup-changed-files" => Ok(ScenarioType::BackupChangedFiles),
+            "backup-deleted-files" => Ok(ScenarioType::BackupDeletedFiles),
+            "backup-restore" => Ok(ScenarioType::BackupRestore),
+            "backup-corruption" => Ok(ScenarioType::BackupCorruption),
+            "backup-interrupted" => Ok(ScenarioType::BackupInterrupted),
+            "backup-large" => Ok(ScenarioType::BackupLarge),
+            "backup-duplicate-content" => Ok(ScenarioType::BackupDuplicateContent),
             _ => anyhow::bail!("Unknown scenario type: {}", s),
         }
     }

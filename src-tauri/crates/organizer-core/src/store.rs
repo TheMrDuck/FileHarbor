@@ -6,8 +6,9 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, Row};
+use rusqlite::{params, Connection, Row, OptionalExtension};
 
+use crate::backup::errors::BackupError;
 use crate::models::*;
 
 pub fn now_ms() -> i64 {
@@ -18,7 +19,7 @@ pub fn now_ms() -> i64 {
 }
 
 pub struct Store {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 pub struct FilePage {
@@ -156,10 +157,89 @@ impl Store {
                     created_at_ms INTEGER NOT NULL
                 );
 
-                CREATE TABLE IF NOT EXISTS settings (
+CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS backup_sets (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    source_path TEXT NOT NULL,
+                    destination_id INTEGER NOT NULL REFERENCES backup_destinations(id),
+                    schedule TEXT NOT NULL DEFAULT 'manual',
+                    retention_policy TEXT NOT NULL DEFAULT 'keep_all',
+                    verification_mode TEXT NOT NULL DEFAULT 'standard',
+                    created_at_ms INTEGER NOT NULL,
+                    updated_at_ms INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_backup_sets_dest ON backup_sets(destination_id);
+
+                CREATE TABLE IF NOT EXISTS backup_destinations (
+                    id INTEGER PRIMARY KEY,
+                    destination_id TEXT NOT NULL UNIQUE,
+                    path TEXT NOT NULL,
+                    label TEXT,
+                    filesystem_id TEXT,
+                    created_at_ms INTEGER NOT NULL,
+                    last_seen_at_ms INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_backup_destinations_path ON backup_destinations(path);
+
+                CREATE TABLE IF NOT EXISTS backup_runs (
+                    id INTEGER PRIMARY KEY,
+                    backup_set_id INTEGER NOT NULL REFERENCES backup_sets(id),
+                    snapshot_id INTEGER REFERENCES backup_snapshots(id),
+                    status TEXT NOT NULL,
+                    started_at_ms INTEGER NOT NULL,
+                    finished_at_ms INTEGER,
+                    files_total INTEGER NOT NULL DEFAULT 0,
+                    files_new INTEGER NOT NULL DEFAULT 0,
+                    files_changed INTEGER NOT NULL DEFAULT 0,
+                    files_unchanged INTEGER NOT NULL DEFAULT 0,
+                    files_deleted INTEGER NOT NULL DEFAULT 0,
+                    files_failed INTEGER NOT NULL DEFAULT 0,
+                    bytes_transferred INTEGER NOT NULL DEFAULT 0,
+                    bytes_verified INTEGER NOT NULL DEFAULT 0,
+                    error_summary TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_backup_runs_set ON backup_runs(backup_set_id);
+                CREATE INDEX IF NOT EXISTS idx_backup_runs_status ON backup_runs(status);
+
+                CREATE TABLE IF NOT EXISTS backup_snapshots (
+                    id INTEGER PRIMARY KEY,
+                    backup_set_id INTEGER NOT NULL REFERENCES backup_sets(id),
+                    run_id INTEGER NOT NULL REFERENCES backup_runs(id),
+                    label TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at_ms INTEGER NOT NULL,
+                    files_count INTEGER NOT NULL DEFAULT 0,
+                    total_size_bytes INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_backup_snapshots_set ON backup_snapshots(backup_set_id);
+
+                CREATE TABLE IF NOT EXISTS backup_files (
+                    id INTEGER PRIMARY KEY,
+                    snapshot_id INTEGER NOT NULL REFERENCES backup_snapshots(id) ON DELETE CASCADE,
+                    relative_path TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    content_id INTEGER REFERENCES backup_contents(id),
+                    error TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_backup_files_snapshot ON backup_files(snapshot_id);
+                CREATE INDEX IF NOT EXISTS idx_backup_files_hash ON backup_files(sha256);
+                CREATE INDEX IF NOT EXISTS idx_backup_files_status ON backup_files(status);
+
+                CREATE TABLE IF NOT EXISTS backup_contents (
+                    id INTEGER PRIMARY KEY,
+                    sha256 TEXT NOT NULL UNIQUE,
+                    size_bytes INTEGER NOT NULL,
+                    reference_count INTEGER NOT NULL DEFAULT 1,
+                    first_seen_ms INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_backup_contents_hash ON backup_contents(sha256);
                 "#,
             )
             .map_err(|e| format!("database migration failed: {e}"))?;
@@ -220,7 +300,52 @@ impl Store {
         let rows = stmt
             .query_map(params![(limit as i64)], map_session)
             .map_err(|e| e.to_string())?;
+rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Get all file records for a scan session.
+    pub fn get_session_files(&self, session_id: i64) -> Result<Vec<FileRecord>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT {FILE_COLS} FROM file_records WHERE session_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![session_id], map_file)
+            .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Find the latest completed scan session that covers the given path.
+    /// Returns the session_id if found.
+    pub fn find_latest_session_for_path(&self, path: &str) -> Result<Option<i64>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, roots FROM scan_sessions
+                 WHERE status = 'completed'
+                 ORDER BY id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let roots_json: String = row.get(1)?;
+                Ok((id, roots_json))
+            })
+            .map_err(|e| e.to_string())?;
+        
+        let path_buf = std::path::Path::new(path);
+        for row in rows {
+            let (id, roots_json) = row.map_err(|e| e.to_string())?;
+            let roots: Vec<String> = serde_json::from_str(&roots_json).unwrap_or_default();
+            for root in roots {
+                let root_path = std::path::Path::new(&root);
+                if path_buf == root_path || path_buf.starts_with(root_path) {
+                    return Ok(Some(id));
+                }
+            }
+        }
+        Ok(None)
     }
 
     // ------------------------------------------------------------------
@@ -865,7 +990,7 @@ impl Store {
             )
             .map_err(|e| e.to_string())?;
 
-        Ok(ScanSummary {
+Ok(ScanSummary {
             session,
             files_scanned: files_scanned as u64,
             total_size_bytes: total_size as u64,
@@ -877,18 +1002,51 @@ impl Store {
             potential_reclaimable_bytes: reclaimable.max(0) as u64,
         })
     }
+
+    pub fn get_backup_run_status(&self, run_id: i64) -> Result<Option<(String, Option<i64>)>, String> {
+        self.conn
+            .query_row(
+                "SELECT status, started_at_ms FROM backup_runs WHERE id = ?1",
+                params![run_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn get_backup_set_id_from_run(&self, run_id: i64) -> Result<Option<i64>, String> {
+        self.conn
+            .query_row(
+                "SELECT backup_set_id FROM backup_runs WHERE id = ?1",
+                params![run_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_backup_run(&self, backup_set_id: i64) -> Result<i64, BackupError> {
+        let now = now_ms();
+        self.conn
+            .execute(
+                "INSERT INTO backup_runs (backup_set_id, status, started_at_ms) VALUES (?1, ?2, ?3)",
+                params![backup_set_id, "running", now],
+            )
+            .map_err(|e| BackupError::DatabaseError(e.to_string()))?;
+        Ok(self.conn.last_insert_rowid())
+    }
 }
 
 // ----------------------------------------------------------------------
 // Row mapping helpers
 // ----------------------------------------------------------------------
 
-const FILE_COLS: &str =
+pub const FILE_COLS: &str =
     "f.id, f.session_id, f.path, f.file_name, f.extension, f.size_bytes, \
      f.created_at_ms, f.modified_at_ms, f.accessed_at_ms, f.is_empty, \
      f.hash, f.hash_algorithm, f.hash_status, f.scan_status, f.error";
 
-fn map_file(row: &Row) -> Result<FileRecord, rusqlite::Error> {
+pub fn map_file(row: &Row) -> Result<FileRecord, rusqlite::Error> {
     Ok(FileRecord {
         id: row.get(0)?,
         session_id: row.get(1)?,
@@ -926,6 +1084,10 @@ fn map_operation(row: &Row) -> Result<FileOperation, rusqlite::Error> {
         kind: match row.get::<_, String>(2)?.as_str() {
             "restore" => OperationKind::Restore,
             "delete_permanent" => OperationKind::DeletePermanent,
+            "backup" => OperationKind::Backup,
+            "backup_verify" => OperationKind::BackupVerify,
+            "backup_restore" => OperationKind::BackupRestore,
+            "backup_cancel" => OperationKind::BackupCancel,
             _ => OperationKind::Quarantine,
         },
         status: OperationStatus::parse(&row.get::<_, String>(3)?),

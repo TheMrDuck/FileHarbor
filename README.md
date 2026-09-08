@@ -1,13 +1,35 @@
-# FileHarbor — Phase 1
+# FileHarbor
 
-A safe filesystem analysis and cleanup utility for Windows/macOS/Linux.
-Phase 1 finds **objective facts** about your files — exact duplicates and
-empty files — and lets you review them before anything happens.
-Cleanup moves files into an application-managed **quarantine** area;
-permanent deletion requires explicit confirmation and is only ever
-performed on quarantined copies.
+A safe file organization and backup application for Windows/macOS/Linux.
 
-> Phase 1 does **not** decide whether a file is "useful", "junk", or
+## Phase 1 — Organization
+
+Finds **objective facts** about your files — exact duplicates and empty
+files — and lets you review them before anything happens. Cleanup moves
+files into an application-managed **quarantine** area; permanent deletion
+requires explicit confirmation.
+
+## Phase 2 — Backup & Protection
+
+Adds a reliable local backup system:
+
+- Create named backup sets (source + destination)
+- Initial and incremental backups
+- SHA-256 verification of every copied file
+- Snapshot versioning with conservative retention
+- Safe restore with conflict resolution
+- Backup health dashboard
+- Interrupted backup detection and recovery
+
+> A backup is not considered successful until the destination copy has been verified.
+
+## Documentation
+
+- [Backup Architecture](docs/backup/architecture.md)
+- [Backup Safety](docs/backup/safety.md)
+- [Backup Storage](docs/backup/storage.md)
+- [Backup Testing](docs/backup/testing.md)
+- [Engineering Report](docs/backup/engineering-report.md)
 > "safe to delete". It only reports verifiable filesystem facts.
 
 ## Features (Phase 1)

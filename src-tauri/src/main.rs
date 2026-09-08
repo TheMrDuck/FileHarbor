@@ -78,7 +78,16 @@ fn main() {
             commands::check_file_backup_status,
             commands::get_file_backup_status,
             commands::detect_interrupted_backups,
-            commands::resume_backup_run
+            commands::resume_backup_run,
+            commands::check_scheduled_backups,
+            commands::export_backup_set,
+            commands::import_backup_set,
+            commands::discover_backup_destinations,
+            commands::get_volume_identity,
+            commands::reassociate_backup_set,
+            commands::get_backup_logs,
+            commands::clear_backup_cache,
+            commands::verify_backup_deep
         ])
 .run(tauri::generate_context!())
         .expect("error while running FileHarbor");

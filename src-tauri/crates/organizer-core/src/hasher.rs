@@ -150,3 +150,19 @@ pub fn empty_sha256() -> String {
     hex(Sha256::digest([]).as_slice())
 }
 
+/// Simplified hash function for backup verification (no cancellation, no unstable detection).
+pub fn hash_file(path: &Path) -> Result<String, String> {
+    let file = File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut reader = file;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex(&hasher.finalize()))
+}
+

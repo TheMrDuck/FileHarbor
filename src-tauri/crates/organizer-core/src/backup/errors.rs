@@ -78,6 +78,12 @@ pub enum BackupError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    #[error("Destination error: {0}")]
+    DestinationError(String),
 }
 
 impl BackupError {
@@ -108,6 +114,8 @@ impl BackupError {
             BackupError::PathTraversal(_) => ErrorClassification::InvalidConfiguration,
             BackupError::UnsupportedFileType(_) => ErrorClassification::SourceUnreadable,
             BackupError::Internal(_) => ErrorClassification::Unknown,
+            BackupError::SerializationError(_) => ErrorClassification::DatabaseError,
+            BackupError::DestinationError(_) => ErrorClassification::DestinationUnavailable,
         }
     }
 
@@ -143,6 +151,8 @@ impl BackupError {
             BackupError::PathTraversal(path) => format!("Invalid path (traversal attempt): {}", path),
             BackupError::UnsupportedFileType(path) => format!("Unsupported file type: {}", path),
             BackupError::Internal(msg) => format!("Internal error: {}", msg),
+            BackupError::SerializationError(msg) => format!("Data serialization error: {}", msg),
+            BackupError::DestinationError(msg) => format!("Destination error: {}", msg),
         }
     }
 }

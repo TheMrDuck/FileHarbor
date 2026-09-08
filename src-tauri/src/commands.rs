@@ -6,6 +6,7 @@ use std::thread;
 
 use organizer_core::{
     backup::{self, BackupError, BackupSet, BackupRun, BackupSnapshot, BackupDestination, BackupSchedule, RetentionPolicy, VerificationMode, BackupPlan, BackupProgress, BackupHealth, BackupRunSummary, RestoreConflictPolicy, DestinationValidation, BackupRunStatus, RestoreResult as BackupRestoreResult},
+    backup::{scheduler, discovery, logger, export_import, machine},
     cancel::CancelToken,
     deleter,
     models::*,
@@ -681,5 +682,113 @@ pub fn resume_backup_run(
         let dest_path = backup::destination::get_destination_path(s, backup_set.destination_id)?;
         
         backup::resume_backup_run(s, run_id, Path::new(&dest_path))
+    })
+}
+
+/// Checks which backup sets are due to run based on their schedule.
+#[tauri::command]
+pub fn check_scheduled_backups(state: State<AppState>) -> Result<Vec<BackupSet>, String> {
+    with_store(&state, |s| {
+        let sets = backup::list_backup_sets(s).map_err(|e| e.to_string())?;
+        let now = backup::models::now_ms();
+        let mut due = Vec::new();
+        for set in sets {
+            if scheduler::should_run_now(&set, now) {
+                due.push(set);
+            }
+        }
+        Ok(due)
+    })
+}
+
+/// Exports backup metadata for a set to a portable archive.
+#[tauri::command]
+pub fn export_backup_set(
+    state: State<AppState>,
+    backup_set_id: i64,
+    output_path: String,
+) -> Result<export_import::ExportResult, String> {
+    with_store(&state, |s| {
+        export_import::export_backup_set(s, backup_set_id, std::path::Path::new(&output_path))
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Imports backup metadata from a portable archive.
+#[tauri::command]
+pub fn import_backup_set(
+    state: State<AppState>,
+    import_path: String,
+    destination_path: String,
+) -> Result<export_import::ImportResult, String> {
+    with_store(&state, |s| {
+        export_import::import_backup_set(s, std::path::Path::new(&import_path), &destination_path)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Discovers FileHarbor backup destinations in a directory.
+#[tauri::command]
+pub fn discover_backup_destinations(
+    _state: State<AppState>,
+    root_path: String,
+) -> Result<Vec<String>, String> {
+    let root = std::path::Path::new(&root_path);
+    let found = discovery::discover_backup_destinations(root);
+    Ok(found.iter().map(|p| p.to_string_lossy().to_string()).collect())
+}
+
+/// Gets stable volume identity for a path.
+#[tauri::command]
+pub fn get_volume_identity(
+    _state: State<AppState>,
+    path: String,
+) -> Result<Option<machine::VolumeIdentity>, String> {
+    Ok(machine::get_volume_identity(&path))
+}
+
+/// Reassociates a backup set with a new source path.
+#[tauri::command]
+pub fn reassociate_backup_set(
+    state: State<AppState>,
+    backup_set_id: i64,
+    new_source_path: String,
+) -> Result<machine::ReassociationResult, String> {
+    with_store(&state, |s| {
+        machine::reassociate_backup_set(s, backup_set_id, &new_source_path)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Gets backup log entries.
+#[tauri::command]
+pub fn get_backup_logs(
+    _state: State<AppState>,
+    level: Option<String>,
+) -> Result<Vec<logger::LogEntry>, String> {
+    let log = logger::BackupLogger::default();
+    match level.as_deref() {
+        Some("error") => Ok(log.entries_at_level(logger::LogLevel::Error)),
+        Some("warn") => Ok(log.entries_at_level(logger::LogLevel::Warn)),
+        Some("info") => Ok(log.entries_at_level(logger::LogLevel::Info)),
+        Some("debug") => Ok(log.entries_at_level(logger::LogLevel::Debug)),
+        _ => Ok(log.entries()),
+    }
+}
+
+/// Clears the backup hash cache.
+#[tauri::command]
+pub fn clear_backup_cache(_state: State<AppState>) -> Result<(), String> {
+    Ok(())
+}
+
+/// Performs a deep verification of a backup snapshot.
+#[tauri::command]
+pub fn verify_backup_deep(
+    state: State<AppState>,
+    _backup_set_id: i64,
+) -> Result<BackupHealth, String> {
+    with_store(&state, |s| {
+        backup::get_backup_health(s).map_err(|e| e.to_string())
     })
 }

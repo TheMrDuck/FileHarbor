@@ -5,6 +5,7 @@
 //! file. Permanent deletion operates exclusively on files that have
 //! already been moved into the application-managed quarantine area.
 
+pub mod backup;
 pub mod cancel;
 pub mod deleter;
 pub mod dupdetect;
