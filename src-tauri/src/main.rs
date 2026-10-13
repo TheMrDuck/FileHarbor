@@ -110,7 +110,9 @@ fn main() {
             commands::scan_document_lineages,
             commands::scan_carving_candidates,
             commands::execute_carving_renames,
-            commands::run_harbor_patrol
+            commands::run_harbor_patrol,
+            commands::open_file,
+            commands::show_in_folder
         ])
 .run(tauri::generate_context!())
         .expect("error while running FileHarbor");

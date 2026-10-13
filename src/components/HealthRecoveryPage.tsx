@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, formatBytes } from "../api";
 import { IconAlert, IconCheck, IconTrash } from "./NavIcons";
 import type {
@@ -716,34 +717,115 @@ export const HealthRecoveryPage: React.FC = () => {
                 </div>
 
                 {/* Member Visual Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "14px" }}>
                   {cluster.members.map((m) => {
                     const isKeep = m.path === cluster.primary_keep_path;
                     return (
                       <div
                         key={m.path}
                         style={{
-                          padding: "12px",
+                          padding: "14px",
                           borderRadius: "var(--radius)",
                           border: isKeep ? "1px solid rgba(34, 197, 94, 0.4)" : "1px solid var(--border)",
                           background: isKeep ? "rgba(34, 197, 94, 0.04)" : "rgba(255, 255, 255, 0.02)",
                           display: "flex",
                           flexDirection: "column",
-                          justifyContent: "space-between",
+                          gap: "10px",
                         }}
                       >
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                            <span style={{ fontWeight: 600, fontSize: "13px" }}>{m.file_name}</span>
-                            {isKeep ? (
-                              <span className="keep-badge" style={{ fontSize: "11px" }}>⭐ Highest Quality</span>
-                            ) : (
-                              <span className="badge" style={{ background: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontSize: "11px" }}>
-                                Redundant
-                              </span>
-                            )}
+                        {/* Top Status & Action Header */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
+                          {isKeep ? (
+                            <span className="keep-badge" style={{ fontSize: "11px", whiteSpace: "nowrap" }}>
+                              ⭐ Highest Quality
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ background: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontSize: "11px", whiteSpace: "nowrap" }}>
+                              Redundant
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-small"
+                            style={{ fontSize: "11px", padding: "2px 8px" }}
+                            onClick={() => api.openFile(m.path)}
+                            title="Open in system photo viewer"
+                          >
+                            Open File ↗
+                          </button>
+                        </div>
+
+                        {/* Interactive Image Preview Thumbnail */}
+                        <div
+                          onClick={() => api.openFile(m.path)}
+                          title="Click to view full image in default photo viewer"
+                          style={{
+                            width: "100%",
+                            height: "150px",
+                            borderRadius: "6px",
+                            overflow: "hidden",
+                            background: "rgba(0, 0, 0, 0.25)",
+                            border: "1px solid var(--border)",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                          }}
+                        >
+                          <img
+                            src={convertFileSrc(m.path)}
+                            alt={m.file_name}
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: "100%",
+                              objectFit: "contain",
+                            }}
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
+                          />
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "6px",
+                              right: "6px",
+                              background: "rgba(0, 0, 0, 0.75)",
+                              color: "var(--text-bright)",
+                              fontSize: "10px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            Click to View ↗
                           </div>
-                          <div className="mono" style={{ fontSize: "11px", color: "var(--text-dim)", wordBreak: "break-all", marginBottom: "6px" }}>
+                        </div>
+
+                        {/* Filename and Metadata */}
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              fontSize: "13px",
+                              color: "var(--text-bright)",
+                              wordBreak: "break-all",
+                              marginBottom: "4px",
+                            }}
+                            title={m.file_name}
+                          >
+                            {m.file_name}
+                          </div>
+                          <div
+                            className="mono"
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--text-dim)",
+                              wordBreak: "break-all",
+                              marginBottom: "8px",
+                            }}
+                            title={m.path}
+                          >
                             {m.path}
                           </div>
                           <div style={{ fontSize: "12px", color: "var(--text-dim)", display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -753,11 +835,12 @@ export const HealthRecoveryPage: React.FC = () => {
                           </div>
                         </div>
 
+                        {/* Bottom Actions */}
                         {!isKeep && (
-                          <div style={{ marginTop: "10px", display: "flex", justifyContent: "flex-end" }}>
+                          <div style={{ marginTop: "auto", paddingTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                             <button
                               className="btn btn-secondary"
-                              style={{ fontSize: "11px", padding: "2px 8px" }}
+                              style={{ fontSize: "11px", padding: "4px 10px", borderColor: "rgba(239, 68, 68, 0.4)", color: "var(--danger)" }}
                               onClick={() => handleQuarantineNearDupes([m.path])}
                               disabled={quarantining}
                             >

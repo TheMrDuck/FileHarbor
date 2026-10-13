@@ -235,6 +235,12 @@ export const api = {
 
   runHarborPatrol: (backupSetId: number, autoHeal?: boolean) =>
     invoke<import("./types").HarborPatrolSummary>("run_harbor_patrol", { backupSetId, autoHeal }),
+
+  openFile: (path: string) =>
+    invoke<void>("open_file", { path }),
+
+  showInFolder: (path: string) =>
+    invoke<void>("show_in_folder", { path }),
 };
 
 export function formatBytes(bytes: number): string {
