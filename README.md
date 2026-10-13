@@ -1,9 +1,18 @@
 # FileHarbor
 
+[![Latest Release](https://img.shields.io/github/v/release/TheMrDuck/FileHarbor?color=brightgreen&label=latest%20release)](https://github.com/TheMrDuck/FileHarbor/releases/latest)
+[![Download Windows EXE](https://img.shields.io/badge/Windows-Download%20.exe-blue?logo=windows)](https://github.com/TheMrDuck/FileHarbor/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
+
+> [!TIP]
+> **Looking to install FileHarbor on Windows?**
+> You do not need to compile from source. Download the latest installer directly from [**GitHub Releases**](https://github.com/TheMrDuck/FileHarbor/releases/latest):
+> - [**FileHarbor_0.2.0_x64-setup.exe**](https://github.com/TheMrDuck/FileHarbor/releases/download/v0.2.0/FileHarbor_0.2.0_x64-setup.exe) (Recommended: Standard Windows Setup Wizard)
+> - [**FileHarbor_0.2.0_x64_portable.exe**](https://github.com/TheMrDuck/FileHarbor/releases/download/v0.2.0/FileHarbor_0.2.0_x64_portable.exe) (Portable: Run immediately without installation)
+> - [**FileHarbor_0.2.0_x64_en-US.msi**](https://github.com/TheMrDuck/FileHarbor/releases/download/v0.2.0/FileHarbor_0.2.0_x64_en-US.msi) (MSI package)
 
 A safe, verifiable desktop file organization, deduplication, and backup recovery engine for Windows, macOS, and Linux.
 
