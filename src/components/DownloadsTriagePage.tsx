@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api, formatBytes } from "../api";
 import type { TriagePlan } from "../types";
 
@@ -10,6 +11,17 @@ export const DownloadsTriagePage: React.FC = () => {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [executing, setExecuting] = useState<boolean>(false);
+
+  const handleBrowseFolder = async () => {
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (typeof selected === "string") {
+        setFolderPath(selected);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleScan = async () => {
     if (!folderPath.trim()) return;
@@ -102,6 +114,13 @@ export const DownloadsTriagePage: React.FC = () => {
             onChange={(e) => setFolderPath(e.target.value)}
             aria-label="Triage target folder path"
           />
+          <button
+            type="button"
+            onClick={handleBrowseFolder}
+            className="btn btn-secondary"
+          >
+            Browse…
+          </button>
           <button
             onClick={handleScan}
             disabled={loading || !folderPath.trim()}

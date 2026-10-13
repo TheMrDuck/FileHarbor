@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api, formatBytes } from "../api";
 import { IconAlert, IconCheck, IconTrash } from "./NavIcons";
 import type {
@@ -19,6 +20,39 @@ export const HealthRecoveryPage: React.FC = () => {
 
   // Quarantine in-progress flag
   const [quarantining, setQuarantining] = useState<boolean>(false);
+
+  const handleBrowseFolder = async () => {
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (typeof selected === "string") {
+        setFolderPath(selected);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleBrowseCandidateA = async () => {
+    try {
+      const selected = await open({ directory: false, multiple: false });
+      if (typeof selected === "string") {
+        setCandidateAPath(selected);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleBrowseCandidateB = async () => {
+    try {
+      const selected = await open({ directory: false, multiple: false });
+      if (typeof selected === "string") {
+        setCandidateBPath(selected);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   // Tab 1: Recovery Collisions
   const [pairs, setPairs] = useState<RecoveryPairComparison[]>([]);
@@ -344,6 +378,13 @@ export const HealthRecoveryPage: React.FC = () => {
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
             />
+            <button
+              type="button"
+              onClick={handleBrowseFolder}
+              className="btn btn-secondary"
+            >
+              Browse…
+            </button>
             {activeTab === "collisions" && (
               <button
                 onClick={handleScanCollisions}
@@ -748,43 +789,61 @@ export const HealthRecoveryPage: React.FC = () => {
                 <label htmlFor="candidate-copy-a-path" style={{ display: "block", fontSize: "12px", color: "var(--text-dim)", marginBottom: "4px" }}>
                   Candidate Copy A:
                 </label>
-                <input
-                  id="candidate-copy-a-path"
-                  type="text"
-                  value={candidateAPath}
-                  onChange={(e) => setCandidateAPath(e.target.value)}
-                  placeholder="Path to damaged Copy A..."
-                  aria-label="Path to damaged Candidate Copy A"
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    id="candidate-copy-a-path"
+                    type="text"
+                    value={candidateAPath}
+                    onChange={(e) => setCandidateAPath(e.target.value)}
+                    placeholder="Path to damaged Copy A..."
+                    aria-label="Path to damaged Candidate Copy A"
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      background: "var(--bg)",
+                      color: "var(--text)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={handleBrowseCandidateA}
+                  >
+                    Browse…
+                  </button>
+                </div>
               </div>
               <div>
                 <label htmlFor="candidate-copy-b-path" style={{ display: "block", fontSize: "12px", color: "var(--text-dim)", marginBottom: "4px" }}>
                   Candidate Copy B:
                 </label>
-                <input
-                  id="candidate-copy-b-path"
-                  type="text"
-                  value={candidateBPath}
-                  onChange={(e) => setCandidateBPath(e.target.value)}
-                  placeholder="Path to damaged Copy B..."
-                  aria-label="Path to damaged Candidate Copy B"
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    id="candidate-copy-b-path"
+                    type="text"
+                    value={candidateBPath}
+                    onChange={(e) => setCandidateBPath(e.target.value)}
+                    placeholder="Path to damaged Copy B..."
+                    aria-label="Path to damaged Candidate Copy B"
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      background: "var(--bg)",
+                      color: "var(--text)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={handleBrowseCandidateB}
+                  >
+                    Browse…
+                  </button>
+                </div>
               </div>
             </div>
 
