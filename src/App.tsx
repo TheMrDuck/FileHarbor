@@ -200,6 +200,7 @@ export default function App() {
               initialRoots={initialScanRoots}
               onStarted={(id) => setScan({ sessionId: id, progress: null })}
               onOpenResults={openResults}
+              activeScanId={scan?.sessionId ?? null}
             />
           )}
           {page === "overview" && activeSessionId !== null && (

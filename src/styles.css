@@ -248,8 +248,15 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+span.truncated,
+dd.truncated,
+p.truncated,
+div.truncated,
+a.truncated {
   display: inline-block;
-  vertical-align: bottom;
+  vertical-align: middle;
 }
 
 .roots-line {
@@ -483,7 +490,8 @@ select:focus {
 
 .status-completed { border-color: var(--success); color: var(--success); }
 .status-running   { border-color: var(--accent); color: var(--accent); }
-.status-cancelled { border-color: var(--warning); color: var(--warning); }
+.status-cancelled,
+.status-interrupted { border-color: var(--warning); color: var(--warning); }
 .status-failed,
 .status-hash_failed,
 .status-inaccessible { border-color: var(--danger); color: var(--danger); }
@@ -561,15 +569,25 @@ table {
 th,
 td {
   text-align: left;
-  padding: 8px 10px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 th {
   color: var(--text-dim);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+tbody tr {
+  transition: background 0.15s ease;
+}
+
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .file-table tbody tr:hover {
@@ -1416,5 +1434,46 @@ th {
   .btn-destructive {
     animation: none !important;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Previous Scans Table Polish                                        */
+/* ------------------------------------------------------------------ */
+
+.previous-scans-table {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.previous-scans-table th {
+  padding-bottom: 12px;
+}
+
+.previous-scans-table td {
+  padding: 13px 14px;
+}
+
+.scan-id-cell {
+  font-weight: 700;
+  color: var(--text-bright);
+  font-feature-settings: "tnum";
+  font-size: 13px;
+}
+
+.scan-date-cell {
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.scan-roots-cell {
+  max-width: 480px;
+}
+
+.scan-roots-cell .truncated {
+  display: block;
+  max-width: 100%;
+  color: var(--text);
+  font-size: 12px;
 }
 

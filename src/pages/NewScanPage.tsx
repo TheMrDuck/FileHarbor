@@ -9,9 +9,10 @@ interface Props {
   initialRoots?: string[];
   onStarted: (sessionId: number) => void;
   onOpenResults: (sessionId: number) => void;
+  activeScanId?: number | null;
 }
 
-export default function NewScanPage({ initialRoots, onStarted, onOpenResults }: Props) {
+export default function NewScanPage({ initialRoots, onStarted, onOpenResults, activeScanId }: Props) {
   const [roots, setRoots] = useState<string[]>(initialRoots ?? []);
   const [recent, setRecent] = useState<ScanSession[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -142,32 +143,43 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults }: 
         {recent.length === 0 ? (
           <p className="empty-inline">No scans yet. Your first scan will appear here.</p>
         ) : (
-          <table>
+          <table className="previous-scans-table">
             <thead>
               <tr>
-                <th scope="col">Scan</th>
-                <th scope="col">Started</th>
-                <th scope="col">Status</th>
+                <th scope="col" style={{ width: "70px" }}>Scan</th>
+                <th scope="col" style={{ width: "210px" }}>Started</th>
+                <th scope="col" style={{ width: "130px" }}>Status</th>
                 <th scope="col">Roots</th>
-                <th scope="col"></th>
+                <th scope="col" style={{ width: "140px", textAlign: "right" }}></th>
               </tr>
             </thead>
             <tbody>
-              {recent.map((s) => (
-                <tr key={s.id}>
-                  <td>#{s.id}</td>
-                  <td>{new Date(s.started_at_ms).toLocaleString()}</td>
-                  <td>
-                    <span className={`badge status-${s.status}`}>{s.status}</span>
-                  </td>
-                  <td className="mono truncated">{s.roots.join(", ")}</td>
-                  <td>
-                    <button className="btn btn-ghost btn-small" onClick={() => onOpenResults(s.id)}>
-                      View results
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {recent.map((s) => {
+                const isRunning = s.status === "running";
+                const isStale = isRunning && s.id !== activeScanId;
+                const statusLabel = isStale ? "interrupted" : s.status;
+                return (
+                  <tr key={s.id}>
+                    <td className="scan-id-cell">#{s.id}</td>
+                    <td className="scan-date-cell">
+                      {new Date(s.started_at_ms).toLocaleString()}
+                    </td>
+                    <td>
+                      <span className={`badge status-${statusLabel}`}>{statusLabel}</span>
+                    </td>
+                    <td className="scan-roots-cell">
+                      <span className="mono truncated" title={s.roots.join(", ")}>
+                        {s.roots.join(", ")}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button className="btn btn-ghost btn-small" onClick={() => onOpenResults(s.id)}>
+                        View results
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
