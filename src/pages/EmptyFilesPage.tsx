@@ -78,7 +78,7 @@ export default function EmptyFilesPage({ sessionId, showToast }: Props) {
       <div className="notice notice-info">
         Empty does not mean useless. Zero-byte files are sometimes used as flags,
         lock markers or placeholders (.gitkeep and similar). Review before moving
-        anything — nothing happens without your confirmation.
+        anything. Nothing happens without your confirmation.
       </div>
 
       {total === 0 ? (
@@ -162,7 +162,7 @@ export default function EmptyFilesPage({ sessionId, showToast }: Props) {
               <p>
                 <strong>{selected.size}</strong> empty file(s)
               </p>
-              <p>They will be moved to Quarantine — not deleted.</p>
+              <p>They will be moved to Quarantine (not deleted).</p>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setConfirming(false)} disabled={busy}>

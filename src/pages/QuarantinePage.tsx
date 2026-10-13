@@ -330,13 +330,13 @@ const deleteTotal = stored
             </div>
             <div className="modal-actions column">
               <button className="btn btn-secondary" onClick={() => resolveConflicts("keep_existing")}>
-                Keep Existing — leave the current file in place
+                Keep Existing: leave the current file in place
               </button>
               <button className="btn btn-primary" onClick={() => resolveConflicts("new_name")}>
-                Restore With New Name — save next to it as “name (restored).ext”
+                Restore With New Name: save next to it as "name (restored).ext"
               </button>
               <button className="btn btn-ghost" onClick={() => resolveConflicts("cancel")}>
-                Cancel — quarantined copy stays in quarantine
+                Cancel: quarantined copy stays in quarantine
               </button>
             </div>
           </div>

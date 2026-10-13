@@ -124,25 +124,67 @@ fn restore_single_file(
     restore_to_path(store, file, dest_path, backup_destination_root)
 }
 
-/// Restores file to a specific path.
+/// Restores file to a specific path with pre-verification and atomic staging.
 fn restore_to_path(
     _store: &Store,
     file: &BackupFile,
     dest_path: &Path,
     backup_destination_root: &Path,
 ) -> Result<bool, BackupError> {
-    // Ensure parent directory exists
+    // 1. Locate pool object
+    let rel_pool = crate::backup::manifest::pool_rel_path(&file.sha256)?;
+    let pool_file = backup_destination_root.join(".fileharbor").join("pool").join(&rel_pool);
+
+    // Fallback for legacy flat files if pool doesn't exist
+    let source_path = if pool_file.exists() {
+        pool_file
+    } else {
+        let legacy = backup_destination_root.join(&file.relative_path);
+        if legacy.exists() {
+            legacy
+        } else {
+            return Err(BackupError::ContentNotFound(format!(
+                "Backup content object missing: {}",
+                pool_file.display()
+            )));
+        }
+    };
+
+    // 2. Pre-verify pool object before restoration
+    let pool_hash = hasher::hash_file(&source_path)
+        .map_err(|e| BackupError::TransferFailed(format!("Failed to hash pool object: {}", e)))?;
+    if pool_hash != file.sha256 {
+        return Err(BackupError::VerificationFailed(format!(
+            "Pool object corrupted for {}: expected {}, got {}",
+            file.relative_path, file.sha256, pool_hash
+        )));
+    }
+
+    // 3. Ensure parent directory exists
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| BackupError::TransferFailed(format!("Failed to create dir: {}", e)))?;
     }
 
-    // Source file in backup destination
-    let source_path = backup_destination_root.join(&file.relative_path);
-    
-    // Copy file from backup to restore destination
-    fs::copy(&source_path, dest_path)
-        .map_err(|e| BackupError::TransferFailed(format!("Failed to copy file: {}", e)))?;
+    // 4. Staged restore via .fileharbor-restore
+    let staging_path = dest_path.with_extension("fileharbor-restore");
+    fs::copy(&source_path, &staging_path)
+        .map_err(|e| BackupError::TransferFailed(format!("Failed to copy file to stage: {}", e)))?;
+
+    // 5. Verify staged file
+    let staged_hash = hasher::hash_file(&staging_path)
+        .map_err(|e| BackupError::TransferFailed(format!("Failed to hash staged file: {}", e)))?;
+    if staged_hash != file.sha256 {
+        let _ = fs::remove_file(&staging_path);
+        return Err(BackupError::VerificationFailed(format!(
+            "Staged restore verification failed: expected {}, got {}",
+            file.sha256, staged_hash
+        )));
+    }
+
+    // 6. Atomic promote into destination path
+    fs::rename(&staging_path, dest_path)
+        .map_err(|e| BackupError::TransferFailed(format!("Failed to promote restored file: {}", e)))?;
 
     Ok(true)
 }

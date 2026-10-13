@@ -16,7 +16,7 @@ pub fn compute_backup_plan(
     source_files: &[FileRecord],
 ) -> Result<BackupPlan, BackupError> {
     let backup_set = get_backup_set(store, backup_set_id)?
-        .ok_or_else(|| BackupError::SetNotFound(backup_set_id))?;
+        .ok_or(BackupError::SetNotFound(backup_set_id))?;
     let source_root = std::path::Path::new(&backup_set.source_path);
 
     let last_snapshot = get_last_completed_snapshot(store, backup_set_id)?;
@@ -48,7 +48,7 @@ pub fn compute_backup_plan(
             unavailable_files.push(PlannedFile {
                 source_path: src.path.clone(),
                 relative_path: src.path.clone(), // Will be made relative by caller
-                size_bytes: src.size_bytes as u64,
+                size_bytes: src.size_bytes,
                 sha256: src.hash.clone(),
                 modified_at_ms: src.modified_at_ms,
             });
@@ -58,11 +58,11 @@ pub fn compute_backup_plan(
         if let Some(snap_file) = snapshot_files.get(&src.path) {
             // File exists in snapshot - check if changed
             // We'll use size and hash for comparison
-            if src.size_bytes as u64 == snap_file.size_bytes && src.hash.as_deref() == Some(&snap_file.sha256) {
+            if src.size_bytes == snap_file.size_bytes && src.hash.as_deref() == Some(&snap_file.sha256) {
                 unchanged_files.push(PlannedFile {
                     source_path: src.path.clone(),
                     relative_path: src.path.clone(),
-                    size_bytes: src.size_bytes as u64,
+                    size_bytes: src.size_bytes,
                     sha256: src.hash.clone(),
                     modified_at_ms: src.modified_at_ms,
                 });
@@ -70,7 +70,7 @@ pub fn compute_backup_plan(
                 changed_files.push(PlannedFile {
                     source_path: src.path.clone(),
                     relative_path: src.path.clone(),
-                    size_bytes: src.size_bytes as u64,
+                    size_bytes: src.size_bytes,
                     sha256: src.hash.clone(),
                     modified_at_ms: src.modified_at_ms,
                 });
@@ -80,7 +80,7 @@ pub fn compute_backup_plan(
             new_files.push(PlannedFile {
                 source_path: src.path.clone(),
                 relative_path: src.path.clone(),
-                size_bytes: src.size_bytes as u64,
+                size_bytes: src.size_bytes,
                 sha256: src.hash.clone(),
                 modified_at_ms: src.modified_at_ms,
             });

@@ -126,6 +126,20 @@ impl TestDataGenerator {
         // Run generation
         generate_fn(&mut ctx)?;
 
+        // Ensure target number of files is reached:
+        // Scenarios with fixed proportions or small quotas may finish under total_files.
+        // Top up with normal files so the user's requested total_files is strictly satisfied.
+        let files_dir = self.output_dir.join("files");
+        if files_dir.exists() && *ctx.file_counter < total_files {
+            let filler_dirs = ["misc", "documents", "downloads", "projects"];
+            for d in &filler_dirs {
+                let _ = std::fs::create_dir_all(files_dir.join(d));
+            }
+            while *ctx.file_counter < total_files {
+                crate::scenarios::generate_normal_file(&mut ctx, &files_dir, &filler_dirs)?;
+            }
+        }
+
         // Finalize manifest
         manifest.finalize();
 
@@ -139,6 +153,15 @@ impl TestDataGenerator {
         // Finish progress bar
         if let Some(pb) = progress_bar {
             pb.finish_with_message("Generation complete");
+        }
+
+        if let Some(ref cb) = self.config.progress_callback {
+            cb(crate::scenarios::GenerationProgress {
+                directories_created: manifest.summary.directories,
+                files_created: manifest.summary.files,
+                bytes_written: manifest.files.iter().map(|f| f.size_bytes).sum(),
+                duplicate_groups_created: manifest.summary.duplicate_groups,
+            });
         }
 
         let elapsed = start_time.elapsed();
@@ -238,10 +261,12 @@ mod tests {
     #[test]
     fn test_small_generation() {
         let temp_dir = tempdir().unwrap();
-        let mut config = GenerationConfig::default();
-        config.total_files = 10;
-        config.duplicate_groups = 2;
-        config.empty_files = 2;
+        let config = GenerationConfig {
+            total_files: 10,
+            duplicate_groups: 2,
+            empty_files: 2,
+            ..Default::default()
+        };
         
         let mut generator = TestDataGenerator::new_with_options("phase1-baseline", temp_dir.path().to_path_buf(), config, true).unwrap();
         let manifest = generator.generate().unwrap();

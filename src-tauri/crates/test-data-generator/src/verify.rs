@@ -1,12 +1,13 @@
 use crate::manifest::{FileCategory, FileRecord, Manifest};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use walkdir::WalkDir;
 
 /// Verification result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationResult {
     pub expected_files: usize,
     pub found_files: usize,
@@ -20,21 +21,21 @@ pub struct VerificationResult {
     pub missing_actual: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SizeMismatch {
     pub path: String,
     pub expected: u64,
     pub actual: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HashMismatch {
     pub path: String,
     pub expected: String,
     pub actual: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuplicateGroupResult {
     pub group_id: String,
     pub expected_count: usize,
@@ -43,7 +44,7 @@ pub struct DuplicateGroupResult {
     pub all_hashes_match: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmptyFileResult {
     pub path: String,
     pub expected_empty: bool,
@@ -359,8 +360,10 @@ mod tests {
     #[test]
     fn test_verify_valid_dataset() {
         let temp_dir = tempdir().unwrap();
-        let mut config = crate::scenarios::GenerationConfig::default();
-        config.total_files = 100;
+        let config = crate::scenarios::GenerationConfig {
+            total_files: 100,
+            ..Default::default()
+        };
         
         let mut generator = TestDataGenerator::new_with_options("phase1-baseline", temp_dir.path().to_path_buf(), config, true).unwrap();
         let _manifest = generator.generate().unwrap();
@@ -403,10 +406,10 @@ mod tests {
         manifest.add_file(record);
         manifest.finalize();
         
-        AtomicManifestWriter::write(&temp_dir.path().join("manifest.json"), &manifest).unwrap();
+        AtomicManifestWriter::write(temp_dir.path().join("manifest.json"), &manifest).unwrap();
         
         // Don't create the actual file - it should be reported as missing
-        let result = verify_dataset(&temp_dir.path().join("manifest.json")).unwrap();
+        let result = verify_dataset(temp_dir.path().join("manifest.json")).unwrap();
         
         assert_eq!(result.missing_files.len(), 1);
     }

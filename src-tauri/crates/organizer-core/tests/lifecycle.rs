@@ -35,7 +35,7 @@ fn quarantine_moves_file_and_records_operation() {
     let root = temp_root("q-move");
     let original = write_file(&root, "report.pdf", b"important report content");
 
-    let session = scan(&s, &[root.clone()], "q-move");
+    let session = scan(&s, std::slice::from_ref(&root), "q-move");
     let page = s
         .list_files(session, &FileFilter { limit: 10, ..Default::default() })
         .unwrap();
@@ -72,7 +72,7 @@ fn restore_returns_file_to_original_location() {
     let root = temp_root("q-restore");
     let original = write_file(&root, "docs/notes.txt", b"notes body");
 
-    let session = scan(&s, &[root.clone()], "q-restore");
+    let session = scan(&s, std::slice::from_ref(&root), "q-restore");
     let rec = &s.list_files(session, &FileFilter { limit: 10, ..Default::default() }).unwrap().items[0];
     let item_id = quarantine_one(&s, rec.id, &qroot);
 
@@ -96,7 +96,7 @@ fn restore_recreates_missing_directories() {
     let root = temp_root("q-recreate");
     write_file(&root, "deep/nested/dir/file.bin", b"payload");
 
-    let session = scan(&s, &[root.clone()], "q-recreate");
+    let session = scan(&s, std::slice::from_ref(&root), "q-recreate");
     let rec = &s.list_files(session, &FileFilter { limit: 10, ..Default::default() }).unwrap().items[0];
     let item_id = quarantine_one(&s, rec.id, &qroot);
 
@@ -106,7 +106,7 @@ fn restore_recreates_missing_directories() {
     restore::restore_items(&s, &[item_id], None).expect("restore");
     let restored = Path::new(&rec.path);
     assert!(restored.exists(), "directory tree recreated and file restored");
-    let _ = fs::remove_dir_all(root.parent().unwrap());
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn restore_never_overwrites_existing_file_conflict() {
     let root = temp_root("q-conflict");
     let original_path = write_file(&root, "doc.txt", b"ORIGINAL CONTENT");
 
-    let session = scan(&s, &[root.clone()], "q-conflict");
+    let session = scan(&s, std::slice::from_ref(&root), "q-conflict");
     let rec = &s.list_files(session, &FileFilter { limit: 10, ..Default::default() }).unwrap().items[0];
     let item_id = quarantine_one(&s, rec.id, &qroot);
 
@@ -175,7 +175,7 @@ fn quarantine_partial_failure_reports_each_file() {
                 .unwrap(),
         );
 
-        let session = scan(&s, &[root.clone()], "q-partial");
+        let session = scan(&s, std::slice::from_ref(&root), "q-partial");
         let page = s
             .list_files(session, &FileFilter { limit: 10, ..Default::default() })
             .unwrap();
@@ -206,7 +206,7 @@ fn permanent_deletion_requires_quarantined_items_and_records_results() {
     write_file(&root, "junk-a.tmp", b"aaaa");
     write_file(&root, "junk-b.tmp", b"bbbb");
 
-    let session = scan(&s, &[root.clone()], "q-delete");
+    let session = scan(&s, std::slice::from_ref(&root), "q-delete");
     let page = s
         .list_files(session, &FileFilter { limit: 10, ..Default::default() })
         .unwrap();
@@ -251,6 +251,7 @@ fn deletion_refuses_paths_outside_quarantine() {
         is_empty: false,
         scan_status: ScanStatus::Completed,
         error: None,
+        copy_role: CopyRole::Working,
     }])
     .unwrap();
 
@@ -276,7 +277,7 @@ fn cross_volume_move_verifies_before_removing_original() {
     let root = temp_root("q-crossvol");
     let src = write_file(&root, "video.mkv", vec![7u8; 4096].as_slice());
 
-    let session = scan(&s, &[root.clone()], "q-crossvol");
+    let session = scan(&s, std::slice::from_ref(&root), "q-crossvol");
     let rec = &s.list_files(session, &FileFilter { limit: 10, ..Default::default() }).unwrap().items[0];
 
     // Direct transfer API: correct size + hash verifies cleanly.
@@ -325,6 +326,37 @@ fn cancelled_scan_keeps_partial_results_usable() {
     // Whatever was discovered before cancellation stays queryable.
     let page = s.list_files(session_id, &FileFilter { limit: 1, ..Default::default() }).unwrap();
     assert!(page.total >= 0);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+
+#[test]
+fn test_quarantine_raw_paths_moves_files_and_records_manifest() {
+    let (s, _guard) = setup();
+    let root = temp_root("q-raw-paths");
+    let file1 = write_file(&root, "draft_v1.docx", b"Draft document version 1 content");
+    let file2 = write_file(&root, "photo_lowres.jpg", b"Low-resolution redundant photo");
+
+    let qroot = _guard.path().join("Quarantine");
+    let paths = vec![file1.clone(), file2.clone()];
+
+    let res = organizer_core::quarantine::quarantine_paths(&s, &paths, &qroot, &CancelToken::new())
+        .expect("quarantine raw paths should succeed");
+
+    assert_eq!(res.report.succeeded, 2);
+    assert_eq!(res.report.failed, 0);
+    assert!(!file1.exists(), "original file 1 must be moved into quarantine");
+    assert!(!file2.exists(), "original file 2 must be moved into quarantine");
+
+    let q_items = s.get_quarantine_items(false).expect("get quarantine items");
+    assert_eq!(q_items.len(), 2);
+    assert!(q_items.iter().any(|item| item.original_path == file1.to_string_lossy()));
+    assert!(q_items.iter().any(|item| item.original_path == file2.to_string_lossy()));
+
+    // Verify manifest exists in batch dir
+    let batch_manifest = qroot.join(&res.report.batch_id).join("manifest.json");
+    assert!(batch_manifest.exists(), "manifest.json must be written for the batch");
 
     let _ = fs::remove_dir_all(root);
 }

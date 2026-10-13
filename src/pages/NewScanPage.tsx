@@ -1,23 +1,58 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
+import { IconShield } from "../components/NavIcons";
 import type { ScanSession } from "../types";
 import { useEffect } from "react";
 
 interface Props {
+  initialRoots?: string[];
   onStarted: (sessionId: number) => void;
   onOpenResults: (sessionId: number) => void;
 }
 
-export default function NewScanPage({ onStarted, onOpenResults }: Props) {
-  const [roots, setRoots] = useState<string[]>([]);
+export default function NewScanPage({ initialRoots, onStarted, onOpenResults }: Props) {
+  const [roots, setRoots] = useState<string[]>(initialRoots ?? []);
   const [recent, setRecent] = useState<ScanSession[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [backupAdvisory, setBackupAdvisory] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    if (initialRoots && initialRoots.length > 0) {
+      setRoots(initialRoots);
+    }
+  }, [initialRoots]);
 
   useEffect(() => {
     api.recentSessions().then(setRecent).catch(() => setRecent([]));
   }, []);
+  useEffect(() => {
+    let active = true;
+    async function checkSafety() {
+      for (const r of roots) {
+        try {
+          const setName = await api.checkBackupDestinationSafety(r);
+          if (setName && active) {
+            setBackupAdvisory(
+              `The folder "${r}" contains FileHarbor backup data (${setName}). Backup files will automatically be recognized as protected copies and excluded from quarantine or cleanup recommendations.`
+            );
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (active) {
+        setBackupAdvisory(null);
+      }
+    }
+    checkSafety();
+    return () => {
+      active = false;
+    };
+  }, [roots]);
+
 
   const addFolder = async () => {
     const selected = await open({ directory: true, multiple: false });
@@ -72,6 +107,17 @@ export default function NewScanPage({ onStarted, onOpenResults }: Props) {
             ))}
           </ul>
         )}
+        {backupAdvisory && (
+          <div className="backup-status-warning" role="status" style={{ margin: "12px 0" }}>
+            <h4 style={{ display: "flex", alignItems: "center", gap: "6px", margin: "0 0 4px 0" }}>
+              <IconShield size={16} />
+              <span>Backup Location Detected</span>
+            </h4>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-dim)" }}>
+              {backupAdvisory}
+            </p>
+          </div>
+        )}
         <div className="row">
           <button className="btn btn-secondary" onClick={addFolder}>
             Add folder…
@@ -94,7 +140,7 @@ export default function NewScanPage({ onStarted, onOpenResults }: Props) {
       <div className="card">
         <h3>Previous scans</h3>
         {recent.length === 0 ? (
-          <p className="empty-inline">No scans yet — your first scan will appear here.</p>
+          <p className="empty-inline">No scans yet. Your first scan will appear here.</p>
         ) : (
           <table>
             <thead>

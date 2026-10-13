@@ -1,13 +1,17 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api";
 import type { BackupSet, BackupRun, BackupSnapshot } from "../types";
 import { formatBytes, formatDate } from "../api";
 
-export default function BackupDetailsPage() {
+interface Props {
+  setId?: number;
+  onNavigate?: (page: string, opts?: { setId?: number; runId?: number; snapshotId?: number }) => void;
+}
+
+export default function BackupDetailsPage({ setId: propSetId, onNavigate }: Props) {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const setId = parseInt(id || "0", 10);
+  const setId = propSetId ?? parseInt(id || "0", 10);
   const [set, setSet] = useState<BackupSet | null>(null);
   const [destination, setDestination] = useState<{ id: number; path: string; label: string | null; filesystem_id: string | null; created_at_ms: number; last_seen_at_ms: number | null } | null>(null);
   const [runs, setRuns] = useState<BackupRun[]>([]);
@@ -47,11 +51,29 @@ export default function BackupDetailsPage() {
     }
   };
 
+  const [starting, setStarting] = useState(false);
+
+  const handleStartBackup = async () => {
+    if (!set) return;
+    setStarting(true);
+    setError(null);
+    try {
+      const runId = await api.startBackup(set.id);
+      if (onNavigate) {
+        onNavigate("backup-run", { runId, setId: set.id });
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirm("Delete this backup set? This will remove the configuration but keep the backup data.")) return;
     try {
       await api.deleteBackupSet(setId, false);
-      navigate("/backups");
+      if (onNavigate) onNavigate("backups");
     } catch (e) {
       setError(String(e));
     }
@@ -62,7 +84,7 @@ export default function BackupDetailsPage() {
     if (!confirm("Are you absolutely sure? All backup files will be permanently deleted.")) return;
     try {
       await api.deleteBackupSet(setId, true);
-      navigate("/backups");
+      if (onNavigate) onNavigate("backups");
     } catch (e) {
       setError(String(e));
     }
@@ -97,10 +119,22 @@ export default function BackupDetailsPage() {
       <header className="page-header">
         <h2>{set.name}</h2>
         <div className="header-actions">
-          <button className="btn btn-primary" onClick={() => navigate(`/backup/${set.id}/run`)}>
-            Start Backup
+          <button
+            className="btn btn-secondary"
+            onClick={() => onNavigate && onNavigate("backup-history", { setId: set.id })}
+          >
+            History
           </button>
-          <button className="btn btn-ghost" onClick={() => navigate("/backups")}>Back</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleStartBackup}
+            disabled={starting}
+          >
+            {starting ? "Starting…" : "Start Backup"}
+          </button>
+          <button className="btn btn-ghost" onClick={() => onNavigate && onNavigate("backups")}>
+            Back
+          </button>
         </div>
       </header>
 
@@ -126,8 +160,8 @@ export default function BackupDetailsPage() {
           {destination && (
             <dl className="details-list">
               <dt>Path</dt><dd className="truncated mono">{destination.path}</dd>
-              <dt>Label</dt><dd>{destination.label || "—"}</dd>
-              <dt>Filesystem ID</dt><dd className="mono">{destination.filesystem_id || "—"}</dd>
+              <dt>Label</dt><dd>{destination.label || "None"}</dd>
+              <dt>Filesystem ID</dt><dd className="mono">{destination.filesystem_id || "None"}</dd>
               <dt>Created</dt><dd>{formatDate(destination.created_at_ms)}</dd>
               <dt>Last Seen</dt><dd>{destination.last_seen_at_ms ? formatDate(destination.last_seen_at_ms) : "Never"}</dd>
             </dl>
@@ -204,7 +238,10 @@ export default function BackupDetailsPage() {
                       <td className="mono">{s.files_count.toLocaleString()}</td>
                       <td className="mono">{formatBytes(s.total_size_bytes)}</td>
                       <td>
-                        <button className="btn btn-secondary btn-small" onClick={() => navigate(`/backup/${s.id}/restore`)}>
+                        <button
+                          className="btn btn-secondary btn-small"
+                          onClick={() => onNavigate && onNavigate("backup-restore", { snapshotId: s.id, setId: set.id })}
+                        >
                           Restore
                         </button>
                       </td>

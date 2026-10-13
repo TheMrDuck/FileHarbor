@@ -17,7 +17,8 @@ import type {
   GetFileBackupStatusRequest,
   OperationItem,
   QuarantineItem,
-  RestorePreview,
+  QuarantineRestorePreview,
+  BackupRestorePreview,
   RestoreResult,
   RestoreFromBackupRequest,
   ScanSession,
@@ -25,6 +26,10 @@ import type {
   BackupSchedule,
   RetentionPolicy,
   VerificationMode,
+  TestScenarioInfo,
+  GenerateTestDataRequest,
+  TestManifestSummary,
+  VerificationResult,
 } from "./types";
 
 export const api = {
@@ -63,12 +68,14 @@ export const api = {
     invoke<void>("rebuild_analysis", { sessionId }),
 
   quarantineFiles: (fileIds: number[]) =>
-    invoke<{ report: BatchReport }>("quarantine_files", { fileIds }),
+    invoke<{ report: BatchReport }>('quarantine_files', { fileIds }),
+  quarantineRawPaths: (paths: string[]) =>
+    invoke<{ report: BatchReport }>('quarantine_raw_paths', { paths }),
 
   quarantineItems: () => invoke<QuarantineItem[]>("get_quarantine_items"),
 
   restorePreview: (itemIds: number[]) =>
-    invoke<RestorePreview[]>("restore_preview", { itemIds }),
+    invoke<QuarantineRestorePreview[]>("restore_preview", { itemIds }),
 
   restoreExecute: (itemIds: number[], resolution?: "keep_existing" | "new_name") =>
     invoke<{ report: BatchReport; kept_existing: string[] }>("restore_execute", {
@@ -120,7 +127,7 @@ export const api = {
 
   // Planning & execution
   planBackup: (backupSetId: number) => invoke<BackupPlan>("plan_backup", { backupSetId }),
-  startBackup: (backupSetId: number) => invoke<void>("start_backup", { backupSetId }),
+  startBackup: (backupSetId: number) => invoke<number>("start_backup", { backupSetId }),
   cancelBackup: (runId: number) => invoke<void>("cancel_backup", { runId }),
   getBackupProgress: (runId: number) => invoke<BackupProgress | null>("get_backup_progress", { runId }),
   verifyBackup: (runId: number) => invoke<{ runId: number; snapshotId: number; totalFiles: number; verifiedFiles: number; failedFiles: number; missingFiles: number; errors: { relativePath: string; error: string; expectedHash: string | null; actualHash: string | null }[] }>("verify_backup", { runId }),
@@ -128,7 +135,7 @@ export const api = {
 
   // Restore
   restoreFromBackup: (request: RestoreFromBackupRequest) => invoke<RestoreResult>("restore_from_backup", { request }),
-  getRestorePreview: (snapshotId: number, destinationRoot: string) => invoke<RestorePreview>("get_restore_preview", { snapshotId, destinationRoot }),
+  getRestorePreview: (snapshotId: number, destinationRoot: string) => invoke<BackupRestorePreview>("get_restore_preview", { snapshotId, destinationRoot }),
   retryFailedBackupItems: (runId: number) => invoke<void>("retry_failed_backup_items", { runId }),
 
   // Destinations
@@ -145,6 +152,89 @@ export const api = {
   // Check if a file has a verified backup
   checkFileBackupStatus: (file_path: string) =>
     invoke<[string, string] | null>("check_file_backup_status", { file_path }),
+
+  // Test Data Generator
+  listTestScenarios: () => invoke<TestScenarioInfo[]>("list_test_scenarios"),
+  getDefaultTestDataDir: (scenario?: string) =>
+    invoke<string>("get_default_test_data_dir", { scenario }),
+  generateTestData: (request: GenerateTestDataRequest) =>
+    invoke<TestManifestSummary>("generate_test_data", { request }),
+  verifyTestData: (path: string) =>
+    invoke<VerificationResult>("verify_test_data", { path }),
+  cleanTestData: (path: string) =>
+    invoke<void>("clean_test_data", { path }),
+  listTrackedTestDatasets: () =>
+    invoke<import("./types").TrackedTestDataset[]>("list_tracked_test_datasets"),
+
+  // File Health & Recovery
+  analyzeFileHealth: (path: string) =>
+    invoke<import("./types").FileHealthReport>("analyze_file_health", { path }),
+  scanAndCompareRecoveryPairs: (folderPath: string) =>
+    invoke<import("./types").RecoveryPairComparison[]>(
+      "scan_and_compare_recovery_pairs",
+      { folderPath }
+    ),
+
+  // Downloads & Atom Triage
+  scanTriagePlan: (request: {
+    folder_path: string;
+    organize_by_category: boolean;
+    custom_destination_dir?: string;
+  }) => invoke<import("./types").TriagePlan>("scan_triage_plan", { request }),
+  executeTriageMoves: (request: { items_to_move: [string, string][] }) =>
+    invoke<import("./types").TriageExecutionResult>("execute_triage_moves", {
+      request,
+    }),
+
+  // Phase 3 Intelligence
+  getDuplicateExplanation: (groupId: number) =>
+    invoke<import("./types").DuplicateExplanation>("get_duplicate_explanation", {
+      groupId,
+    }),
+  scanExtensionRectifications: (folderPath: string) =>
+    invoke<import("./types").ExtensionRectificationProposal[]>(
+      "scan_extension_rectifications",
+      { folderPath }
+    ),
+  executeExtensionRectifications: (request: { items: [string, string][] }) =>
+    invoke<import("./types").RectificationExecutionResult>(
+      "execute_extension_rectifications",
+      { request }
+    ),
+  scanPerceptualDuplicates: (folderPath: string, maxHammingDistance?: number) =>
+    invoke<import("./types").NearDuplicateCluster[]>(
+      "scan_perceptual_duplicates",
+      { folderPath, maxHammingDistance }
+    ),
+
+  // Phase 5 Multi-Copy File Reconstruction
+  planFileReconstruction: (candidateA: string, candidateB: string) =>
+    invoke<import("./types").ReconstructionPlan>("plan_file_reconstruction", {
+      candidateA,
+      candidateB,
+    }),
+  executeFileReconstruction: (request: {
+    plan: import("./types").ReconstructionPlan;
+  }) =>
+    invoke<import("./types").ReconstructionResult>(
+      "execute_file_reconstruction",
+      { request }
+    ),
+
+  getPrivacyAudit: () =>
+    invoke<import("./types").PrivacyAuditResult>("get_privacy_audit"),
+
+  scanDocumentLineages: (folderPath: string, maxHammingDistance?: number) =>
+    invoke<import("./types").DocumentLineageCluster[]>("scan_document_lineages", { folderPath, maxHammingDistance }),
+
+  scanCarvingCandidates: (folderPath: string) =>
+    invoke<import("./types").CarvedFileProposal[]>("scan_carving_candidates", { folderPath }),
+
+  executeCarvingRenames: (request: { items: [string, string][] }) =>
+    invoke<import("./types").CarveExecutionResult>("execute_carving_renames", { request }),
+
+  runHarborPatrol: (backupSetId: number, autoHeal?: boolean) =>
+    invoke<import("./types").HarborPatrolSummary>("run_harbor_patrol", { backupSetId, autoHeal }),
 };
 
 export function formatBytes(bytes: number): string {

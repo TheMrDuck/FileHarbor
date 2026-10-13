@@ -78,7 +78,7 @@ export default function OverviewPage({ sessionId, onNavigate }: Props) {
           </li>
           <li>
             <strong>Empty files</strong> may be intentional (flags, placeholders,
-            lock markers) — empty does not mean useless.
+            lock markers); empty does not mean useless.
           </li>
           <li>
             Nothing is deleted automatically. Cleanup moves files into{" "}

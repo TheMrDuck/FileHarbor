@@ -11,42 +11,7 @@ pub fn now_ms() -> i64 {
 }
 
 /// Role of a file copy in the system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CopyRole {
-    /// User's working copy (source of truth for editing)
-    Working,
-    /// Protected backup copy (must not be treated as disposable)
-    Backup,
-    /// Quarantined copy (awaiting user decision)
-    Quarantine,
-    /// Unknown / not yet classified
-    Unknown,
-}
-
-impl CopyRole {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            CopyRole::Working => "working",
-            CopyRole::Backup => "backup",
-            CopyRole::Quarantine => "quarantine",
-            CopyRole::Unknown => "unknown",
-        }
-    }
-}
-
-impl std::str::FromStr for CopyRole {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "working" => CopyRole::Working,
-            "backup" => CopyRole::Backup,
-            "quarantine" => CopyRole::Quarantine,
-            _ => CopyRole::Unknown,
-        })
-    }
-}
+pub use crate::models::CopyRole;
 
 /// Status of a backup set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -303,16 +268,13 @@ impl std::str::FromStr for VerificationMode {
 /// Retention policy for old snapshots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum RetentionPolicy {
+    #[default]
     KeepAll,
     KeepLastN(u32),
 }
 
-impl Default for RetentionPolicy {
-    fn default() -> Self {
-        RetentionPolicy::KeepAll
-    }
-}
 
 impl RetentionPolicy {
     pub fn as_str(&self) -> String {

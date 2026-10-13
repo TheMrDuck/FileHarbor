@@ -30,6 +30,7 @@ fn main() {
             app.manage(AppState {
                 store: Mutex::new(store),
                 scans: Mutex::new(std::collections::HashMap::new()),
+                backups: Mutex::new(std::collections::HashMap::new()),
                 quarantine_root,
                 app_data_dir,
             });
@@ -45,6 +46,7 @@ fn main() {
             commands::get_duplicate_groups,
             commands::rebuild_analysis,
             commands::quarantine_files,
+            commands::quarantine_raw_paths,
             commands::get_quarantine_items,
             commands::restore_preview,
             commands::restore_execute,
@@ -87,7 +89,28 @@ fn main() {
             commands::reassociate_backup_set,
             commands::get_backup_logs,
             commands::clear_backup_cache,
-            commands::verify_backup_deep
+            commands::verify_backup_deep,
+            commands::list_test_scenarios,
+            commands::get_default_test_data_dir,
+            commands::generate_test_data,
+            commands::verify_test_data,
+            commands::clean_test_data,
+            commands::list_tracked_test_datasets,
+            commands::analyze_file_health,
+            commands::scan_and_compare_recovery_pairs,
+            commands::scan_triage_plan,
+            commands::execute_triage_moves,
+            commands::get_duplicate_explanation,
+            commands::scan_extension_rectifications,
+            commands::execute_extension_rectifications,
+            commands::scan_perceptual_duplicates,
+            commands::plan_file_reconstruction,
+            commands::execute_file_reconstruction,
+            commands::get_privacy_audit,
+            commands::scan_document_lineages,
+            commands::scan_carving_candidates,
+            commands::execute_carving_renames,
+            commands::run_harbor_patrol
         ])
 .run(tauri::generate_context!())
         .expect("error while running FileHarbor");

@@ -83,7 +83,7 @@ export default function OperationsPage() {
                             <li key={it.id}>
                               <span className={`badge status-${it.status}`}>{it.status}</span>{" "}
                               <span className="mono truncated">{it.source ?? "?"}</span>
-                              {it.error && <em className="error-cell"> — {it.error}</em>}
+                              {it.error && <em className="error-cell">: {it.error}</em>}
                             </li>
                           ))}
                         </ul>

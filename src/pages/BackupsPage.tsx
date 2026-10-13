@@ -1,15 +1,13 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { BackupSet, BackupRun } from "../types";
 import { formatBytes, formatDate } from "../api";
 
 interface Props {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, opts?: { setId?: number }) => void;
 }
 
-export default function BackupsPage({ onNavigate: _onNavigate }: Props) {
-  const navigate = useNavigate();
+export default function BackupsPage({ onNavigate }: Props) {
   const [sets, setSets] = useState<BackupSet[]>([]);
   const [destinations, setDestinations] = useState<Array<{ id: number; path: string; label: string | null }>>([]);
   const [runs, setRuns] = useState<BackupRun[]>([]);
@@ -40,7 +38,7 @@ export default function BackupsPage({ onNavigate: _onNavigate }: Props) {
   };
 
   const handleCreateBackup = () => {
-    navigate("/backup/create");
+    onNavigate("backup-create");
   };
 
   const formatStatus = (status: string) => {
@@ -70,9 +68,14 @@ export default function BackupsPage({ onNavigate: _onNavigate }: Props) {
     <section>
       <header className="page-header">
         <h2>Backups</h2>
-        <button className="btn btn-primary" onClick={handleCreateBackup}>
-          Create Backup
-        </button>
+        <div className="header-actions">
+          <button className="btn btn-secondary" onClick={() => onNavigate("backup-health")}>
+            Backup Health
+          </button>
+          <button className="btn btn-primary" onClick={handleCreateBackup}>
+            Create Backup
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -110,7 +113,7 @@ export default function BackupsPage({ onNavigate: _onNavigate }: Props) {
                     <td>{formatStatus(s.schedule)}</td>
                     <td>{lastRun ? formatDate(lastRun.started_at_ms) : "Never"}</td>
                     <td>
-                      <button className="btn btn-ghost btn-small" onClick={() => navigate(`/backup/${s.id}`)}>
+                      <button className="btn btn-ghost btn-small" onClick={() => onNavigate("backup-details", { setId: s.id })}>
                         Details
                       </button>
                     </td>

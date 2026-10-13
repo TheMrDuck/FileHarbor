@@ -221,7 +221,7 @@ fn get_run_snapshot_id(
         rusqlite::params![run_id],
         |r| r.get::<_, Option<i64>>(0),
     ).map_err(|e| BackupError::DatabaseError(e.to_string()))?
-    .ok_or_else(|| BackupError::RunNotFound(run_id))
+    .ok_or(BackupError::RunNotFound(run_id))
 }
 
 /// Gets a snapshot by ID.

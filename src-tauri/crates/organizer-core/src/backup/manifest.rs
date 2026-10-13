@@ -36,6 +36,35 @@ pub struct ManifestFile {
     pub size_bytes: u64,
     pub sha256: String,
     pub verified: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_object: Option<String>,
+}
+
+/// Validates that a string is a canonical 64-character lowercase hexadecimal SHA-256 digest.
+pub fn validate_canonical_sha256(hash: &str) -> Result<(), BackupError> {
+    if hash.len() != 64 {
+        return Err(BackupError::InvalidConfiguration(format!(
+            "Invalid SHA-256 length: expected 64 hex chars, got {}",
+            hash.len()
+        )));
+    }
+    for b in hash.bytes() {
+        if !matches!(b, b'0'..=b'9' | b'a'..=b'f') {
+            return Err(BackupError::InvalidConfiguration(format!(
+                "Invalid SHA-256 character '{}': must be lowercase hex",
+                b as char
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Derives the relative pool path for a SHA-256 hash: `<hash[0..2]>/<hash>`.
+/// Strictly validates the hash to ensure no path traversal or directory escaping.
+pub fn pool_rel_path(sha256: &str) -> Result<std::path::PathBuf, BackupError> {
+    validate_canonical_sha256(sha256)?;
+    let shard = &sha256[0..2];
+    Ok(std::path::Path::new(shard).join(sha256))
 }
 
 /// Writes a manifest atomically (temp -> verify -> rename).
@@ -131,11 +160,15 @@ pub fn build_manifest(
 ) -> Result<BackupManifest, BackupError> {
     let files = get_snapshot_files(store, snapshot.id)?;
 
-    let manifest_files: Vec<ManifestFile> = files.into_iter().map(|f| ManifestFile {
-        relative_path: f.relative_path,
-        size_bytes: f.size_bytes,
-        sha256: f.sha256,
-        verified: f.status == BackupFileStatus::Verified,
+    let manifest_files: Vec<ManifestFile> = files.into_iter().map(|f| {
+        let content_object = pool_rel_path(&f.sha256).ok().map(|p| p.to_string_lossy().replace('\\', "/"));
+        ManifestFile {
+            relative_path: f.relative_path,
+            size_bytes: f.size_bytes,
+            sha256: f.sha256,
+            verified: f.status == BackupFileStatus::Verified,
+            content_object,
+        }
     }).collect();
 
     Ok(BackupManifest {

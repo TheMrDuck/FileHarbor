@@ -1,112 +1,129 @@
 # FileHarbor
 
-A safe file organization and backup application for Windows/macOS/Linux.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB.svg)](https://tauri.app/)
+[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
 
-## Phase 1 — Organization
+A safe, verifiable desktop file organization, deduplication, and backup recovery engine for Windows, macOS, and Linux.
 
-Finds **objective facts** about your files — exact duplicates and empty
-files — and lets you review them before anything happens. Cleanup moves
-files into an application-managed **quarantine** area; permanent deletion
-requires explicit confirmation.
+FileHarbor operates on **verifiable filesystem facts**. It never guesses or silently alters data. All destructive actions require explicit user confirmation, and deletions always route through an application-managed quarantine with complete audit logs.
 
-## Phase 2 — Backup & Protection
+---
 
-Adds a reliable local backup system:
+## Key Capabilities
 
-- Create named backup sets (source + destination)
-- Initial and incremental backups
-- SHA-256 verification of every copied file
-- Snapshot versioning with conservative retention
-- Safe restore with conflict resolution
-- Backup health dashboard
-- Interrupted backup detection and recovery
+### 1. Exact Duplicate & Empty File Detection
+- **Streaming SHA-256**: High-performance chunked hashing capable of processing large multi-gigabyte files safely without memory spikes.
+- **Rayon Parallelism**: Multi-threaded candidate hashing with fast size pre-filtering.
+- **Smart Keeping Recommendations**: Heuristics for shortest path, newest/oldest mtime, while never deleting without explicit user choice.
+- **Separate Empty File Audits**: Separates 0-byte placeholders from content duplicates (empty != useless).
+- **Persistent Hash Cache**: Cached hashes keyed by `(path, size, mtime)` to accelerate repeated scans.
 
-> A backup is not considered successful until the destination copy has been verified.
+### 2. Quarantine & Reversible Operations
+- **Atomic Quarantine**: Moves flagged files safely into an isolated quarantine repository.
+- **Non-Destructive Restore**: Guarantees zero overwrites during restoration, automatically managing collision naming if the original destination path already exists.
+- **Complete Operation History**: Every move, restore, and purge action is logged to SQLite with timestamps and original filesystem paths.
 
-## Documentation
+### 3. Verified Backup Engine
+- **Named Backup Sets**: Define sources, destinations, and exclusion rules.
+- **Snapshot Versioning**: Incremental and full snapshots using hardlinks or verified copies.
+- **SHA-256 Verification Gate**: A backup run is never marked successful until the destination copy's cryptographic hash matches the source.
+- **Conservative Retention**: Automated grandfather-father-son pruning policies that prevent accidental snapshot exhaustion.
+- **Interrupted Run Recovery**: Detects aborted backups and safely resumes without duplicating transferred data.
 
-- [Backup Architecture](docs/backup/architecture.md)
-- [Backup Safety](docs/backup/safety.md)
-- [Backup Storage](docs/backup/storage.md)
-- [Backup Testing](docs/backup/testing.md)
-- [Engineering Report](docs/backup/engineering-report.md)
-> "safe to delete". It only reports verifiable filesystem facts.
+### 4. Health Patrol & Bit-Rot Scrubber
+- **Continuous Integrity Audits**: Verifies stored snapshots against their original manifest checksums.
+- **Early Bit-Rot Warning**: Identifies decaying storage sectors or silent data corruption before disaster recovery is needed.
 
-## Features (Phase 1)
+### 5. Near-Duplicate & Perceptual Clustering
+- **Document Lineage (SimHash)**: 64-bit SimHash hamming distance calculation for tracking drafts, revisions, and near-identical documents.
+- **Perceptual Image Hashing (dHash)**: Identifies resized, compressed, or slightly altered versions of images.
 
-- Recursive scanning of one or more root folders with exclusions
-- Streaming SHA-256 content hashing (large-file safe)
-- Exact duplicate detection: same size + identical SHA-256 → grouped,
-  with a *recommendation* of which copy to keep (you always decide)
-- Empty file detection, shown separately (empty ≠ useless)
-- Inaccessible / hash-failed / changed-during-scan tracking with retry
-- Scan progress, cooperative cancellation, partial results on cancel
-- Quarantine / Restore / Permanent deletion with full operation history
-- Hash cache keyed by `(path, size, mtime)` — optimization only
-- SQLite persistence of sessions, results, operations and settings
+### 6. File Reconstruction & Carving
+- **Multi-Copy Assembly**: Reconstructs damaged files by stitching valid byte slices across corrupted duplicate copies.
+- **Header & EXIF Carving**: Recovers metadata, dimensions, and timestamps from truncated or partially damaged files.
 
-## Stack
+### 7. Triage & Privacy Auditing
+- **Downloads Triage**: Categorizes stale downloads, ephemeral installers, and archives by age and access history.
+- **Privacy Scanner**: Flags unencrypted private keys, API tokens, and credentials residing in scanned folders.
 
-| Layer      | Technology                                    |
-|------------|-----------------------------------------------|
-| Core       | Rust (`crates/organizer-core`)                |
-| Desktop    | Tauri 2                                       |
-| UI         | React 18 + TypeScript (Vite)                  |
-| Storage    | SQLite via `rusqlite` (bundled)               |
-| Hashing    | `sha2`, chunked streaming                     |
-| Parallelism| `rayon` for candidate hashing                 |
+---
 
-## Development
+## Which Tool Should I Use? (Quick Guide)
+
+| What you are trying to do | Tool to Use | What it does |
+|---|---|---|
+| **Free up disk space safely** | **Analysis &rarr; New Scan &amp; Duplicates** | Discovers byte-for-byte exact SHA-256 duplicate files and empty files. Recommends which copy to keep without ever deleting anything automatically. |
+| **Clean a chaotic Downloads folder** | **Action &amp; Triage &rarr; Downloads Triage** | Analyzes loose files and neatly groups installers (`.exe`/`.msi`), archives, code, and documents into categorized subfolders. |
+| **Fix files with broken extensions (`.bin`/`.tmp`)** | **Health &amp; Recovery &rarr; Signature Rectifier** | Inspects magic bytes (PNG, JPEG, PDF, MP4, etc.) and restores the genuine file extension. |
+| **Organize nameless recovered photos (`FILE001.JPG`)** | **Health &amp; Recovery &rarr; Deep Carving** | Extracts EXIF camera metadata and capture dates to restore human-readable structured filenames. |
+| **Repair a file using two damaged copies** | **Health &amp; Recovery &rarr; Multi-Copy Reconstruction** | Scans byte sectors across two partially damaged copies and stitches the intact parts into one healthy file. |
+| **Find revisions of contracts, essays, or code** | **Health &amp; Recovery &rarr; Document Lineage** | Calculates 64-bit SimHash distances to track edits, revisions, and near-identical document versions. |
+| **Find resized, recompressed, or cropped photos** | **Health &amp; Recovery &rarr; Perceptual Near-Duplicates** | Uses perceptual dHash visual fingerprinting to cluster visually similar images. |
+| **Protect important folders from drive failure & bit-rot** | **Data Protection &rarr; Verified Backups** | Creates versioned snapshots where every single copied file is verified with SHA-256. |
+| **Undo a move or review past actions** | **Action &amp; Triage &rarr; Quarantine &amp; Audit History** | Safely restores quarantined files with zero-overwrite conflict protection, or reviews full SQLite action logs. |
+| **Safely test features before touching real files** | **System &rarr; Test Sandbox** | Generates isolated synthetic mock datasets (corrupted files, duplicate trees, messy downloads) in a temporary sandbox. |
+
+---
+
+## Architecture & Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Core Engine** | Rust (`crates/organizer-core`) |
+| **Desktop Shell** | Tauri 2 |
+| **Frontend UI** | React 18, TypeScript, Vite |
+| **Local Database** | SQLite via bundled `rusqlite` |
+| **Hashing & Integrity** | Streaming SHA-256 (`sha2`), SimHash, dHash |
+| **Concurrency** | `rayon` worker pool |
+
+---
+
+## Getting Started
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (>= 18.x)
+- [Rust toolchain](https://rustup.rs/) (stable)
+- Platform webview (WebView2 on Windows, WebKitGTK on Linux)
+
+### Installation & Development
 
 ```bash
-npm install          # frontend dependencies
-cargo test           # core engine tests (no GUI needed)
-                     #   run inside src-tauri/ or use: cargo test --manifest-path src-tauri/Cargo.toml
-npm run tauri dev    # run the desktop app in development mode
-npm run build        # type-check + build the frontend
-npm run tauri build  # production bundle
+# Clone the repository
+git clone https://github.com/TheMrDuck/FileHarbor.git
+cd FileHarbor
+
+# Install frontend dependencies
+npm install
+
+# Run the desktop app in development mode
+npm run tauri dev
 ```
 
-Requirements: Node.js ≥ 18, Rust stable toolchain, platform webview
-(WebView2 on Windows).
-
-## Testing
-
-All core logic is covered by headless integration tests operating only
-on temporary directories:
+### Production Build
 
 ```bash
-cd src-tauri
-cargo test
+# Build the production bundle
+npm run tauri build
 ```
 
-Test suites:
+---
 
-- `hashing.rs` — identical/different/empty/large content, unstable
-  (changed-during-hash), missing files, locked files, cancellation
-- `duplicates.rs` — scanner traversal, duplicate matrix
-  (A==B dup, same-name-different-content NOT dup, same-size-different-content
-  NOT dup, renamed identical IS dup), empty files kept out of duplicate
-  groups, symlink policy, search/filters, hash cache, 2000+ file scans
-- `lifecycle.rs` — quarantine move + operation records, restore,
-  restore conflicts (never overwrites), directory re-creation on restore,
-  partial batch failures, verified cross-volume transfers, permanent
-  deletion (+ refusal to delete outside quarantine), cancelled scans
+## Testing & Quality Assurance
 
-Tests never touch real user folders; fixtures live in temp directories.
+FileHarbor includes comprehensive headless test suites covering core engine algorithms, hashing, duplicate detection, lifecycle quarantine, backup operations, and file carving. Tests execute strictly against isolated temporary directories:
 
-## Documentation
+```bash
+# Run all workspace tests (77+ tests)
+cargo test --manifest-path src-tauri/Cargo.toml --workspace
 
-- [Architecture](docs/architecture.md) — layers, data model, scan pipeline
-- [Safety Model](docs/safety.md) — duplicate definition, quarantine design,
-  restore conflicts, deletion rules
+# Frontend typecheck & bundle verification
+npm run build
+```
 
-## Roadmap (planned, not implemented)
+---
 
-- **Phase 2** — intelligent organization suggestions
-- **Phase 3** — near-duplicate detection (text similarity, perceptual image hashing)
-- **Phase 4** — corruption detection & recovered-media analysis
-- **Phase 5** — recovery-assisted reconstruction
+## License
 
-The analysis layer (`dupdetect` today) is designed as a pluggable stage so
-future detectors can consume `FileRecord`s without changing the scanner.
+This project is licensed under the [MIT License](LICENSE).

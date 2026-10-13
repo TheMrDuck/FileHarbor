@@ -23,7 +23,7 @@ pub struct VolumeIdentity {
 pub fn get_volume_identity(path: &str) -> Option<VolumeIdentity> {
     #[cfg(target_os = "windows")]
     {
-        return get_windows_volume_identity(path);
+        get_windows_volume_identity(path)
     }
     #[cfg(not(target_os = "windows"))]
     {

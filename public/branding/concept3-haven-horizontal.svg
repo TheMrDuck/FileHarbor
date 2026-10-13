@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 90" width="400" height="90">
+  <defs>
+    <linearGradient id="haven-f-grad-h" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+
+    <linearGradient id="haven-h-grad-h" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+
+    <linearGradient id="wave-lagoon-h" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+
+    <linearGradient id="azure-text-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Left Icon Symbol (FH Monogram Pier) -->
+  <g transform="translate(18, 14)">
+    <!-- Left Stem -->
+    <path d="M6 6 L17 6 L17 62 L6 62 Z" fill="url(#haven-f-grad-h)" rx="2.5" />
+    <!-- Top Bar -->
+    <path d="M17 6 L48 6 C52 6 55 9 55 13 L55 17 L17 17 Z" fill="url(#haven-f-grad-h)" />
+    <!-- Mid Bar -->
+    <path d="M17 28 L44 28 C47 28 49 30 49 33 L49 37 L17 37 Z" fill="url(#haven-h-grad-h)" />
+    <!-- Right Pillar -->
+    <path d="M52 28 L63 28 L63 62 L52 62 Z" fill="url(#haven-h-grad-h)" rx="2.5" />
+
+    <!-- Wave in lagoon -->
+    <path d="M22 50 C 30 44, 38 54, 48 50 C 51 48, 53 49, 54 50" 
+          fill="none" 
+          stroke="url(#wave-lagoon-h)" 
+          stroke-width="3.5" 
+          stroke-linecap="round" />
+  </g>
+
+  <!-- Right Wordmark & Subtitle -->
+  <g transform="translate(102, 10)">
+    <text x="0" y="44" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="36" font-weight="800" fill="#F8FAFC" letter-spacing="-0.5">
+      File<tspan fill="url(#azure-text-grad)">Harbor</tspan>
+    </text>
+
+    <text x="2" y="64" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="10.5" font-weight="600" fill="#64748B" letter-spacing="3.2">
+      INTELLIGENT LOCAL STORAGE
+    </text>
+  </g>
+</svg>

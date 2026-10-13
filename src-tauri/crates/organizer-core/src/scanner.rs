@@ -70,6 +70,8 @@ pub struct ScannerConfig {
     /// Application quarantine root; always excluded automatically.
     pub quarantine_root: Option<PathBuf>,
     pub max_hash_concurrency: usize,
+    /// Automatically shield sensitive credential directories (.ssh, .aws, etc.)
+    pub privacy_shield_enabled: bool,
 }
 
 impl Default for ScannerConfig {
@@ -81,6 +83,7 @@ impl Default for ScannerConfig {
             max_hash_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(4),
+            privacy_shield_enabled: true,
         }
     }
 }
@@ -192,6 +195,25 @@ pub struct ProgressCounters {
     pub errors: AtomicUsize,
 }
 
+
+fn determine_copy_role(path: &Path, backup_roots: &[String]) -> CopyRole {
+    let path_str = path.to_string_lossy().to_lowercase();
+    for b_root in backup_roots {
+        let b_lower = b_root.trim_end_matches(['/', '\\']).to_lowercase();
+        if path_str == b_lower || (path_str.starts_with(&b_lower) && matches!(path_str.as_bytes().get(b_lower.len()), Some(b'\\') | Some(b'/'))) {
+            return CopyRole::Backup;
+        }
+    }
+    let mut current = path.parent();
+    while let Some(parent) = current {
+        if parent.join(".fileharbor").exists() {
+            return CopyRole::Backup;
+        }
+        current = parent.parent();
+    }
+    CopyRole::Working
+}
+
 fn phase_discovery(
     store: &Store,
     cfg: &ScannerConfig,
@@ -203,6 +225,7 @@ fn phase_discovery(
 ) -> SessionStatus {
     let mut batch: Vec<NewFileRecord> = Vec::with_capacity(DISCOVERY_BATCH);
     let mut stack: Vec<PathBuf> = cfg.roots.clone();
+    let backup_destinations = store.get_all_backup_destination_paths();
 
     while let Some(dir) = stack.pop() {
         if cancel.is_cancelled() {
@@ -230,7 +253,17 @@ fn phase_discovery(
                 flush_batch(store, &mut batch);
                 return SessionStatus::Cancelled;
             }
+            
+            let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if file_name == ".fileharbor" || file_name == ".fileharbor-partial" {
+                continue;
+            }
+
             if fs_layer::is_excluded(&path, exclusions) {
+                continue;
+            }
+
+            if cfg.privacy_shield_enabled && crate::privacy::is_sensitive_path(&path) {
                 continue;
             }
             let info = match fs_layer::inspect(&path) {
@@ -256,6 +289,7 @@ fn phase_discovery(
                         is_empty: false,
                         scan_status: ScanStatus::Skipped,
                         error: Some("symbolic link skipped by policy".to_string()),
+                        copy_role: CopyRole::Working,
                     });
                     counters.processed.fetch_add(1, Ordering::Relaxed);
                 }
@@ -265,6 +299,7 @@ fn phase_discovery(
                 EntryKind::RegularFile => {
                     counters.discovered.fetch_add(1, Ordering::Relaxed);
                     let is_empty = info.size_bytes == 0;
+                    let copy_role = determine_copy_role(&info.path, &backup_destinations);
                     batch.push(NewFileRecord {
                         session_id,
                         path: path_str(&info.path),
@@ -277,6 +312,7 @@ fn phase_discovery(
                         is_empty,
                         scan_status: ScanStatus::Completed,
                         error: None,
+                        copy_role,
                     });
                     counters.processed.fetch_add(1, Ordering::Relaxed);
                     progress(
@@ -315,6 +351,7 @@ fn record_error(store: &Store, session_id: i64, path: &Path, message: &str) {
         is_empty: false,
         scan_status: ScanStatus::Inaccessible,
         error: Some(message.to_string()),
+        copy_role: CopyRole::Working,
     }]);
 }
 

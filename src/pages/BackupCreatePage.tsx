@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import type { BackupSchedule, RetentionPolicy, VerificationMode, DestinationValidation } from "../types";
@@ -8,10 +7,10 @@ type Step = "source" | "destination" | "review" | "running" | "complete";
 
 interface Props {
   onCancel: () => void;
+  onNavigate?: (page: string, opts?: { setId?: number; runId?: number }) => void;
 }
 
-export default function BackupCreatePage({ onCancel }: Props) {
-  const navigate = useNavigate();
+export default function BackupCreatePage({ onCancel, onNavigate }: Props) {
   const [step, setStep] = useState<Step>("source");
   const [sourcePath, setSourcePath] = useState("");
   const [destinationPath, setDestinationPath] = useState("");
@@ -79,8 +78,12 @@ export default function BackupCreatePage({ onCancel }: Props) {
         verification_mode: verificationMode,
       });
       
-      // Navigate to running page
-      navigate(`/backup/${backupSet.id}/run`);
+      // Navigate to backup details page
+      if (onNavigate) {
+        onNavigate("backup-details", { setId: backupSet.id });
+      } else {
+        onCancel();
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -97,10 +100,40 @@ export default function BackupCreatePage({ onCancel }: Props) {
     }
   };
 
+  const renderStepIcon = (id: string) => {
+    switch (id) {
+      case "source":
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+          </svg>
+        );
+      case "destination":
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect width="20" height="8" x="2" y="4" rx="2" />
+            <rect width="20" height="8" x="2" y="14" rx="2" />
+            <line x1="6" y1="8" x2="6.01" y2="8" />
+            <line x1="6" y1="18" x2="6.01" y2="18" />
+          </svg>
+        );
+      case "review":
+        return (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+            <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+            <path d="m9 14 2 2 4-4" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
   const steps = [
-    { id: "source", label: "Source", icon: "📁" },
-    { id: "destination", label: "Destination", icon: "💾" },
-    { id: "review", label: "Review", icon: "📋" },
+    { id: "source", label: "Source" },
+    { id: "destination", label: "Destination" },
+    { id: "review", label: "Review" },
   ];
 
   return (
@@ -118,7 +151,7 @@ export default function BackupCreatePage({ onCancel }: Props) {
             onClick={() => ["source", "destination", "review"].indexOf(s.id) <= ["source", "destination", "review"].indexOf(step) && setStep(s.id as Step)}
             disabled={["source", "destination", "review"].indexOf(s.id) > ["source", "destination", "review"].indexOf(step)}
           >
-            <span className="wizard-step-icon">{s.icon}</span>
+            <span className="wizard-step-icon">{renderStepIcon(s.id)}</span>
             <span className="wizard-step-label">{s.label}</span>
           </button>
         ))}
@@ -138,6 +171,7 @@ export default function BackupCreatePage({ onCancel }: Props) {
                 value={sourcePath}
                 readOnly
                 placeholder="No folder selected"
+                aria-label="Source backup folder path"
               />
               <button className="btn btn-secondary" onClick={handleSourceSelect}>
                 Choose Folder…
@@ -166,6 +200,7 @@ export default function BackupCreatePage({ onCancel }: Props) {
                 value={destinationPath}
                 readOnly
                 placeholder="No folder selected"
+                aria-label="Destination backup folder path"
               />
               <button className="btn btn-secondary" onClick={handleDestinationSelect} disabled={validating}>
                 {validating ? "Validating…" : "Choose Folder…"}
@@ -241,7 +276,10 @@ export default function BackupCreatePage({ onCancel }: Props) {
           <h3>✓ Backup created successfully!</h3>
           <p>Your backup set is ready. You can start your first backup from the details page.</p>
           <div className="wizard-actions">
-            <button className="btn btn-primary" onClick={() => navigate("/backups")}>
+            <button
+              className="btn btn-primary"
+              onClick={() => (onNavigate ? onNavigate("backups") : onCancel())}
+            >
               View Backups
             </button>
           </div>

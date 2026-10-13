@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, formatBytes, formatDate } from "../api";
+import { IconShield } from "../components/NavIcons";
 import type { FileRecord, FileBackupStatus } from "../types";
 
 interface Props {
@@ -143,7 +144,11 @@ export default function AllFilesPage({ sessionId }: Props) {
                       )}
                     </td>
                     <td>
-                      {bs ? (
+                      {f.copy_role === "backup" ? (
+                        <span className="badge backup-protected" title="This file is located in a backup directory">
+                          <IconShield size={12} /> Backup Copy
+                        </span>
+                      ) : bs ? (
                         <span className={`badge backup-${bs.status}`}>
                           {bs.status.replace(/_/g, " ")}
                           {bs.backup_set_name && ` (${bs.backup_set_name})`}

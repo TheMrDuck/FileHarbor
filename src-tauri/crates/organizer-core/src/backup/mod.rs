@@ -15,6 +15,7 @@ pub mod discovery;
 pub mod logger;
 pub mod export_import;
 pub mod machine;
+pub mod patrol;
 
 pub use errors::{BackupError, ErrorClassification};
 pub use models::*;
@@ -394,7 +395,7 @@ pub fn resume_backup_run(
     destination_root: &Path,
 ) -> Result<BackupRunSummary, BackupError> {
     let run = get_backup_run(store, run_id)?
-        .ok_or_else(|| BackupError::RunNotFound(run_id))?;
+        .ok_or(BackupError::RunNotFound(run_id))?;
     
     if run.status != BackupRunStatus::Running {
         return Err(BackupError::InvalidConfiguration(
@@ -403,7 +404,7 @@ pub fn resume_backup_run(
     }
     
     let backup_set = get_backup_set(store, run.backup_set_id)?
-        .ok_or_else(|| BackupError::SetNotFound(run.backup_set_id))?;
+        .ok_or(BackupError::SetNotFound(run.backup_set_id))?;
     
     // Create a new engine and run the backup
     let engine = crate::backup::engine::BackupEngine::with_store(store);
@@ -484,7 +485,7 @@ fn compute_set_protection_status(
     // Find latest completed scan session for the source path
     let source_path = &set.source_path;
     let session_id = store.find_latest_session_for_path(source_path)
-        .map_err(|e| BackupError::DatabaseError(e))?;
+        .map_err(BackupError::DatabaseError)?;
     
     let Some(session_id) = session_id else {
         // No scan session - can't determine protection
@@ -493,7 +494,7 @@ fn compute_set_protection_status(
 
     // Get all files from the scan session
     let scan_files = store.get_session_files(session_id)
-        .map_err(|e| BackupError::DatabaseError(e))?;
+        .map_err(BackupError::DatabaseError)?;
 
     // Get latest verified snapshot for this backup set
     let snapshot = get_latest_verified_snapshot(store, set.id)?;
@@ -640,11 +641,13 @@ pub fn compute_file_backup_status(
     // Find the latest completed scan session for the source path
     // For now, we'll use the provided session_id directly since we're checking specific files
     
+pub type BackupSnapshotFileMap = (i64, String, i64, String, i64, std::collections::HashMap<String, BackupFile>);
+
     // Get all backup sets
     let backup_sets = list_backup_sets(store)?;
     
     // For each backup set, get the latest verified snapshot and its files
-    let mut backup_file_maps: Vec<(i64, String, i64, String, i64, std::collections::HashMap<String, BackupFile>)> = Vec::new();
+    let mut backup_file_maps: Vec<BackupSnapshotFileMap> = Vec::new();
     
     for set in &backup_sets {
         if let Some(snapshot) = get_latest_verified_snapshot(store, set.id)? {
@@ -667,7 +670,7 @@ pub fn compute_file_backup_status(
     let mut stmt = store.conn.prepare(&sql).map_err(|e| BackupError::DatabaseError(e.to_string()))?;
     let params: Vec<&dyn rusqlite::ToSql> = file_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
     let rows = stmt.query_map(rusqlite::params_from_iter(params.iter().cloned()), |row| {
-        Ok(map_file(row)?)
+        map_file(row)
     }).map_err(|e| BackupError::DatabaseError(e.to_string()))?;
     
     let mut scan_files: std::collections::HashMap<i64, crate::models::FileRecord> = std::collections::HashMap::new();
@@ -694,7 +697,7 @@ pub fn compute_file_backup_status(
         };
         
         // Get relative path from session roots
-        let session = store.get_session(session_id).map_err(|e| BackupError::DatabaseError(e))?;
+        let session = store.get_session(session_id).map_err(BackupError::DatabaseError)?;
         let roots: Vec<String> = session.roots;
         
         let mut relative_path = None;
@@ -767,6 +770,8 @@ pub fn compute_file_backup_status(
     Ok(results)
 }
 
+pub type BackupOpItem = (Option<String>, Option<String>, Option<i64>, crate::models::OpItemStatus, Option<String>);
+
 /// Records a backup operation in the operation history.
 pub fn record_backup_operation(
     store: &Store,
@@ -774,13 +779,13 @@ pub fn record_backup_operation(
     kind: crate::models::OperationKind,
     status: crate::models::OperationStatus,
     detail: Option<String>,
-    items: &[(Option<String>, Option<String>, Option<i64>, crate::models::OpItemStatus, Option<String>)],
+    items: &[BackupOpItem],
 ) -> Result<i64, BackupError> {
     let batch_id = format!("backup-{}-{}", kind.as_str(), now_ms());
     
     let operation_id = store
         .insert_operation(&batch_id, kind)
-        .map_err(|e| BackupError::DatabaseError(e))?;
+        .map_err(BackupError::DatabaseError)?;
     
     for (source, destination, file_id, item_status, error) in items {
         store
@@ -792,12 +797,12 @@ pub fn record_backup_operation(
                 *item_status,
                 error.as_deref(),
             )
-            .map_err(|e| BackupError::DatabaseError(e))?;
+            .map_err(BackupError::DatabaseError)?;
     }
     
     store
         .finish_operation(operation_id, status, detail.as_deref())
-        .map_err(|e| BackupError::DatabaseError(e))?;
+        .map_err(BackupError::DatabaseError)?;
     
     Ok(operation_id)
 }
@@ -958,7 +963,7 @@ pub fn record_backup_restore(
         (None, Some(format!("snapshot:{}", snapshot_id)), None, OpItemStatus::Completed, None),
     ];
     
-    let all_items: Vec<_> = success_items.into_iter().chain(items.into_iter()).collect();
+    let all_items: Vec<_> = success_items.into_iter().chain(items).collect();
     
     record_backup_operation(
         store,
@@ -1023,5 +1028,30 @@ pub mod test_helpers {
             rusqlite::params![backup_set_id, run_id, label, status, now, 0, 0],
         ).unwrap();
         store.conn.last_insert_rowid()
+    }
+
+    /// Creates a test backup file entry directly in the database.
+    pub fn create_test_backup_file(
+        store: &Store,
+        snapshot_id: i64,
+        relative_path: &str,
+        size_bytes: u64,
+        sha256: &str,
+        status: &str,
+    ) -> i64 {
+        store.conn.execute(
+            "INSERT INTO backup_files (snapshot_id, relative_path, size_bytes, sha256, status) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![snapshot_id, relative_path, size_bytes as i64, sha256, status],
+        ).unwrap();
+        store.conn.last_insert_rowid()
+    }
+
+    /// Retrieves status string of a snapshot by ID.
+    pub fn get_snapshot_status(store: &Store, snapshot_id: i64) -> String {
+        store.conn.query_row(
+            "SELECT status FROM backup_snapshots WHERE id = ?1",
+            rusqlite::params![snapshot_id],
+            |r| r.get(0),
+        ).unwrap()
     }
 }

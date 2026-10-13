@@ -71,6 +71,9 @@ pub fn recommend_keep(members: &[FileRecord]) -> i64 {
         .map(|m| {
             let name_lower = m.file_name.to_lowercase();
             let mut score: u64 = 0;
+            if m.copy_role == CopyRole::Backup {
+                score += 1_000_000;
+            }
             if GENERATED_NAME_MARKERS.iter().any(|marker| name_lower.contains(marker)) {
                 score += 100;
             }
@@ -86,5 +89,74 @@ pub fn recommend_keep(members: &[FileRecord]) -> i64 {
         .collect();
     ranked.sort();
     ranked.first().map(|r| r.3).unwrap_or(0)
+}
+
+/// Generates a human-readable explanation of why a group was formed and why a particular file was recommended to keep.
+pub fn explain_duplicate_group(group: &DuplicateGroup) -> DuplicateExplanation {
+    let keep_id = group.recommended_keep_file_id;
+    let keep_member = group.members.iter().find(|m| m.id == keep_id);
+
+    let keep_reason = match keep_member {
+        Some(m) => {
+            let mut reasons = Vec::new();
+            let name_lower = m.file_name.to_lowercase();
+            let has_markers = GENERATED_NAME_MARKERS.iter().any(|marker| name_lower.contains(marker));
+            if !has_markers {
+                reasons.push("cleanest filename without copy/duplicate suffixes".to_string());
+            }
+            if let Some(mod_time) = m.modified_at_ms {
+                let is_oldest = group.members.iter().all(|other| other.modified_at_ms.unwrap_or(i64::MAX) >= mod_time);
+                if is_oldest {
+                    reasons.push("oldest modification timestamp (likely the original)".to_string());
+                }
+            }
+            let depth = m.path.matches(['/', '\\']).count();
+            let is_shallowest = group.members.iter().all(|other| other.path.matches(['/', '\\']).count() >= depth);
+            if is_shallowest {
+                reasons.push("shallowest directory depth (highest-level organized folder)".to_string());
+            }
+
+            if reasons.is_empty() {
+                "selected based on deterministic directory structure and modification precedence".to_string()
+            } else {
+                format!("Recommended to keep because it has {}", reasons.join(", and "))
+            }
+        }
+        None => "No specific keep recommendation could be established.".to_string(),
+    };
+
+    let member_details = group.members.iter().map(|m| {
+        let name_lower = m.file_name.to_lowercase();
+        let has_markers = GENERATED_NAME_MARKERS.iter().any(|marker| name_lower.contains(marker));
+        let path_depth = m.path.matches(['/', '\\']).count();
+        let role_protection_note = match m.copy_role {
+            CopyRole::Backup => Some("Protected backup copy — safe from deletion".to_string()),
+            CopyRole::Quarantine => Some("Currently in quarantine storage".to_string()),
+            _ => None,
+        };
+
+        DuplicateMemberExplanation {
+            file_id: m.id,
+            file_name: m.file_name.clone(),
+            path: m.path.clone(),
+            modified_at_ms: m.modified_at_ms,
+            copy_role: m.copy_role,
+            is_recommended_keep: m.id == keep_id,
+            has_duplicate_markers: has_markers,
+            path_depth,
+            role_protection_note,
+        }
+    }).collect();
+
+    DuplicateExplanation {
+        group_id: group.id,
+        hash: group.hash.clone(),
+        size_bytes: group.size_bytes,
+        total_members: group.members.len(),
+        match_level: "Level 1: Exact Binary Duplicate (SHA-256)".to_string(),
+        confidence_percentage: 100.0,
+        keep_recommendation_reason: keep_reason,
+        member_details,
+    }
 }
 

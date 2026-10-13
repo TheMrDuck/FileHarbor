@@ -1,5 +1,40 @@
 use serde::{Deserialize, Serialize};
 
+/// Role of a file copy in the system (Phase 2 Section 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CopyRole {
+    /// User's working copy (source of truth for editing)
+    #[default]
+    Working,
+    /// Protected backup copy (must not be treated as disposable)
+    Backup,
+    /// Quarantined copy (awaiting user decision)
+    Quarantine,
+    /// Unknown / not yet classified
+    Unknown,
+}
+
+impl CopyRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CopyRole::Working => "working",
+            CopyRole::Backup => "backup",
+            CopyRole::Quarantine => "quarantine",
+            CopyRole::Unknown => "unknown",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "working" => CopyRole::Working,
+            "backup" => CopyRole::Backup,
+            "quarantine" => CopyRole::Quarantine,
+            _ => CopyRole::Unknown,
+        }
+    }
+}
+
 /// Lifecycle state of a single file within a scan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -235,6 +270,8 @@ pub struct FileRecord {
     pub hash_status: HashStatus,
     pub scan_status: ScanStatus,
     pub error: Option<String>,
+    #[serde(default)]
+    pub copy_role: CopyRole,
 }
 
 /// New file record before it has a database id.
@@ -251,6 +288,7 @@ pub struct NewFileRecord {
     pub is_empty: bool,
     pub scan_status: ScanStatus,
     pub error: Option<String>,
+    pub copy_role: CopyRole,
 }
 
 /// A scan run over one or more root directories.
@@ -290,9 +328,20 @@ pub struct DuplicateGroup {
 }
 
 impl DuplicateGroup {
+    /// Files that are offered as candidates for cleanup/quarantine.
+    /// CRITICAL SAFETY GUARANTEE (Phase 2 Section 4 & 97):
+    /// Backup copies (CopyRole::Backup) are NEVER cleanup candidates.
+    pub fn cleanup_candidate_file_ids(&self) -> Vec<i64> {
+        self.members
+            .iter()
+            .filter(|m| m.id != self.recommended_keep_file_id && m.copy_role != CopyRole::Backup)
+            .map(|m| m.id)
+            .collect()
+    }
+
     pub fn reclaimable_bytes(&self) -> u64 {
-        self.size_bytes
-            .saturating_mul(self.members.len().saturating_sub(1) as u64)
+        let working_copies = self.members.iter().filter(|m| m.copy_role != CopyRole::Backup).count();
+        self.size_bytes.saturating_mul(working_copies.saturating_sub(1) as u64)
     }
 }
 
@@ -357,4 +406,42 @@ pub struct FailedItem {
     pub path: String,
     pub error: String,
 }
+
+/// A test dataset tracked in FileHarbor's persistent database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackedTestDataset {
+    pub id: i64,
+    pub scenario: String,
+    pub path: String,
+    pub total_files: usize,
+    pub total_bytes: u64,
+    pub created_at_ms: i64,
+}
+
+/// Detailed explanation of why files in a duplicate group match and why a particular copy was recommended to keep.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateExplanation {
+    pub group_id: i64,
+    pub hash: String,
+    pub size_bytes: u64,
+    pub total_members: usize,
+    pub match_level: String,
+    pub confidence_percentage: f32,
+    pub keep_recommendation_reason: String,
+    pub member_details: Vec<DuplicateMemberExplanation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateMemberExplanation {
+    pub file_id: i64,
+    pub file_name: String,
+    pub path: String,
+    pub modified_at_ms: Option<i64>,
+    pub copy_role: CopyRole,
+    pub is_recommended_keep: bool,
+    pub has_duplicate_markers: bool,
+    pub path_depth: usize,
+    pub role_protection_note: Option<String>,
+}
+
 

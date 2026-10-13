@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 84" width="380" height="84">
+  <!-- Left Icon Mark: Compact Anchor/Vault Emblem -->
+  <g transform="translate(10, 10)">
+    <!-- Ring -->
+    <circle cx="34" cy="18" r="8" fill="none" stroke="#FF5722" stroke-width="3.5" />
+    <!-- Stock -->
+    <line x1="16" y1="29" x2="52" y2="29" stroke="#E4E4E7" stroke-width="4.5" stroke-linecap="round" />
+    <circle cx="16" cy="29" r="3" fill="#FF5722" />
+    <circle cx="52" cy="29" r="3" fill="#FF5722" />
+    <!-- Shank -->
+    <rect x="31" y="29" width="6" height="26" rx="2" fill="#FFFFFF" />
+    <!-- Flukes -->
+    <path d="M 12 40 C 12 58, 34 62, 34 62 C 34 62, 56 58, 56 40" 
+          fill="none" 
+          stroke="#FF5722" 
+          stroke-width="4.5" 
+          stroke-linecap="round" />
+  </g>
+
+  <!-- Typography -->
+  <g transform="translate(94, 8)">
+    <text x="0" y="40" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="34" font-weight="700" fill="#F8FAFC" letter-spacing="-0.6">
+      File<tspan fill="#FF5722">Harbor</tspan>
+    </text>
+    <text x="1" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="9.5" font-weight="600" fill="#A1A1AA" letter-spacing="2.6">
+      TAMPER-PROOF STORAGE
+    </text>
+  </g>
+</svg>

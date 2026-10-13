@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "../api";
 import type { BackupRun, BackupProgress, BackupRunStatus } from "../types";
 import { formatBytes, formatDate } from "../api";
 
 interface Props {
-  onNavigate: (page: string) => void;
+  runId?: number;
+  onNavigate?: (page: string, opts?: { setId?: number }) => void;
 }
 
 interface BackupRunSummaryEvent {
@@ -32,10 +33,9 @@ interface BackupFinishedEvent {
   error?: string;
 }
 
-export default function BackupRunPage({ onNavigate: _onNavigate }: Props) {
+export default function BackupRunPage({ runId: propRunId, onNavigate }: Props) {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const runId = parseInt(id || "0", 10);
+  const runId = propRunId ?? parseInt(id || "0", 10);
   const [run, setRun] = useState<BackupRun | null>(null);
   const [progress, setProgress] = useState<BackupProgress | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,7 +130,10 @@ export default function BackupRunPage({ onNavigate: _onNavigate }: Props) {
     return (
       <section>
         <p className="form-error" role="alert">Error: {error}</p>
-        <button className="btn btn-secondary" onClick={() => navigate("/backups")}>
+        <button
+          className="btn btn-secondary"
+          onClick={() => onNavigate && onNavigate("backups")}
+        >
           Back to Backups
         </button>
       </section>
@@ -143,7 +146,10 @@ export default function BackupRunPage({ onNavigate: _onNavigate }: Props) {
     <section className="backup-run">
       <header className="page-header">
         <h2>Backup in Progress</h2>
-        <button className="btn btn-ghost" onClick={() => navigate("/backups")}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => onNavigate && onNavigate("backups")}
+        >
           Back
         </button>
       </header>

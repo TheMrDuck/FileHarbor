@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 84" width="380" height="84">
+  <!-- Left Icon Mark: Geometric Breakwater Pier + Signal Beacon -->
+  <g transform="translate(8, 10)">
+    <!-- Breakwater Outer Wall -->
+    <path d="M 22 14 L 46 14 C 58 14, 66 22, 66 34 C 66 46, 56 52, 44 52 L 22 52 Z" 
+          fill="#1E232E" 
+          stroke="#2E3544" 
+          stroke-width="2" />
+    
+    <!-- Inner Basin / File Plate -->
+    <path d="M 30 22 L 46 22 C 52 22, 58 26, 58 34 C 58 42, 52 44, 44 44 L 30 44 Z" 
+          fill="#F3F4F6" />
+    
+    <!-- Negative Space File lines -->
+    <line x1="30" y1="31" x2="44" y2="31" stroke="#1E232E" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="30" y1="37" x2="40" y2="37" stroke="#1E232E" stroke-width="2.5" stroke-linecap="round" />
+
+    <!-- Harbor Lantern: Amber Warm Signal -->
+    <circle cx="22" cy="14" r="7" fill="#F59E0B" />
+    <circle cx="22" cy="14" r="2.5" fill="#FFFBEB" />
+
+    <!-- Base Mooring -->
+    <rect x="20" y="50" width="5" height="7" rx="1" fill="#94A3B8" />
+  </g>
+
+  <!-- Typography: Pure Swiss/Nordic Grotesk Hierarchy -->
+  <g transform="translate(94, 8)">
+    <text x="0" y="40" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="34" font-weight="700" fill="#F8FAFC" letter-spacing="-0.6">
+      File<tspan fill="#F59E0B">Harbor</tspan>
+    </text>
+    <text x="1" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif" font-size="9.5" font-weight="600" fill="#717D96" letter-spacing="2.6">
+      LOCAL DATA RESILIENCE
+    </text>
+  </g>
+</svg>

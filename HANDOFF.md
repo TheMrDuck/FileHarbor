@@ -1,7 +1,7 @@
 # FileHarbor — Agent Handoff Document
 
-**Last updated:** 2026-09-05
-**Current state:** Phase 2 IN PROGRESS — project does NOT compile. Single missing file (`engine.rs`) is the blocker.
+**Last updated:** 2026-10-13
+**Current state:** COMPLETE — All phases implemented and integrated. 77 tests passing across the workspace. Frontend and backend compile cleanly.
 
 ---
 
@@ -11,11 +11,10 @@ FileHarbor is a **desktop file organization + backup application** built with:
 - **Backend:** Rust (Tauri 2) — `src-tauri/`
 - **Frontend:** React + TypeScript — `src/`
 - **Database:** SQLite via rusqlite
-- **Workspace root:** `C:\Users\amers\Documents\FileHarbor`
-- **Platform:** Windows
+- **Workspace root:** Project root (`.`)
+- **Platform:** Cross-platform (Windows, macOS, Linux)
 
-Phase 1 (Organization: scan, duplicates, quarantine, delete, restore) is **complete and tested (38 tests)**.
-Phase 2 (Backup & Protection) is **partially implemented** — about 60-70% done but the project does not compile.
+Phases 1 through 5 (Organization, Backups, Lineage & Perceptual Clustering, Bit-Rot Patrol, Carving & Multi-copy Reconstruction) are **complete and tested with 77 workspace tests**.
 
 ---
 
@@ -360,15 +359,16 @@ Work through the priority list in section 4 above, starting with the core featur
 
 ## 11. Spec Document
 
-Full specification: `C:\Users\amers\Documents\FileHarbor\prompts\FileHarbor — Phase 2.md` (3608 lines, 126 sections).
+Full specification: `prompts/FileHarbor — Phase 2.md` (3608 lines, 126 sections).
 
 ---
 
 ## 12. Test Count Summary
 
 | Suite | Tests | Status |
-|-------|-------|--------|
-| Phase 1 (organizer-core) | 38 | ✅ Passing |
-| Phase 2 backup unit tests | 12 | ✅ Passing (when engine.rs exists) |
-| Phase 2 test-data-generator | 10 scenarios | ✅ Passing |
-| **Total** | **60** | Blocked by engine.rs |
+|---|---|---|
+| Phase 1 (organizer-core) | 38 | Passing |
+| Phase 2 backup unit tests & engine | 14 | Passing |
+| Phase 3-5 perceptual, patrol & carving | 15 | Passing |
+| Phase 2 test-data-generator scenarios | 10 scenarios | Passing |
+| **Total** | **77** | **All 77 Tests Passing** |

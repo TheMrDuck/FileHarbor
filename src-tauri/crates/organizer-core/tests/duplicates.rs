@@ -53,7 +53,7 @@ fn exact_duplicate_matrix() {
     write_file(&root, "x2.dat", b"9876543210");                  // same size as x1, diff content
     write_file(&root, "renamed_copy.bin", b"identical payload"); // D: renamed dup of A
 
-    let session = scan(&s, &[root.clone()], "dup-matrix");
+    let session = scan(&s, std::slice::from_ref(&root), "dup-matrix");
     let groups = duplicate_groups(&s, session);
 
     assert_eq!(groups.len(), 1, "expected exactly one duplicate group, got {groups:?}");
@@ -117,7 +117,7 @@ fn symlinked_directories_are_not_followed() {
         write_file(&root, "real/file.txt", b"content");
         symlink(root.join("real"), root.join("loop")).expect("create symlink");
 
-        let session = scan(&s, &[root.clone()], "symlink");
+        let session = scan(&s, std::slice::from_ref(&root), "symlink");
         let page = s
             .list_files(session, &FileFilter { limit: 100, ..Default::default() })
             .unwrap();
@@ -141,7 +141,7 @@ fn file_symlinks_are_recorded_as_skipped() {
         let real = write_file(&root, "target.txt", b"target content");
         symlink(&real, root.join("link.txt")).expect("create file symlink");
 
-        let session = scan(&s, &[root.clone()], "file-link");
+        let session = scan(&s, std::slice::from_ref(&root), "file-link");
         let page = s
             .list_files(session, &FileFilter { limit: 100, ..Default::default() })
             .unwrap();
@@ -172,12 +172,13 @@ fn inaccessible_entries_become_inaccessible_records_without_crashing() {
         is_empty: false,
         scan_status: ScanStatus::Completed,
         error: None,
+        copy_role: CopyRole::Working,
     }])
     .unwrap();
     // Simulate a vanished entry by inserting an inaccessible record the way
     // the scanner would when stat fails.
     s.insert_file_records(&[NewFileRecord {
-        session_id: session_id,
+        session_id,
         path: root.join("ghost.txt").to_string_lossy().to_string(),
         file_name: "ghost.txt".into(),
         extension: Some("txt".into()),
@@ -188,6 +189,7 @@ fn inaccessible_entries_become_inaccessible_records_without_crashing() {
         is_empty: false,
         scan_status: ScanStatus::Inaccessible,
         error: Some("The file no longer exists.".into()),
+        copy_role: CopyRole::Working,
     }])
     .unwrap();
 
@@ -214,7 +216,7 @@ fn large_number_of_files_scan() {
         write_file(&root, &format!("dir{d}/shared-b.bin"), b"shared duplicate payload B");
     }
 
-    let session = scan(&s, &[root.clone()], "many-files");
+    let session = scan(&s, std::slice::from_ref(&root), "many-files");
     let page = s.list_files(session, &FileFilter { limit: 1, ..Default::default() }).unwrap();
     assert_eq!(page.total, 2010);
 
@@ -266,4 +268,53 @@ fn hash_cache_reused_for_unchanged_files_only() {
     // Any change in identity tuple invalidates the cache entry.
     assert_eq!(s.hash_cache_get(&path, 15, Some(1000)), None);
     assert_eq!(s.hash_cache_get(&path, 14, Some(2000)), None);
+}
+
+#[test]
+fn exact_duplicate_with_backup_copy_preserves_backup_as_protected() {
+    let s = store();
+    let root = temp_root("scan-backup-dup");
+    let source_dir = root.join("source");
+    let backup_dir = root.join("backup");
+
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&backup_dir).unwrap();
+
+    // Create FileHarbor backup destination marker (.fileharbor/destination.json)
+    fs::create_dir_all(backup_dir.join(".fileharbor")).unwrap();
+    fs::write(
+        backup_dir.join(".fileharbor/destination.json"),
+        b"{\"destination_id\":\"test-dest-01\",\"created_at\":1000}",
+    )
+    .unwrap();
+
+    let content = b"critical business report data";
+    write_file(&source_dir, "report.pdf", content);
+    write_file(&source_dir, "final-report.pdf", content);
+    write_file(&backup_dir, "report.pdf", content);
+
+    let session = scan(&s, &[source_dir.clone(), backup_dir.clone()], "backup-dup");
+    let groups = duplicate_groups(&s, session);
+
+    assert_eq!(groups.len(), 1, "expected 1 duplicate group with identical content");
+    let g = &groups[0];
+    assert_eq!(g.members.len(), 3, "expected 3 files with identical SHA-256");
+
+    // Verify backup copy is recognized with CopyRole::Backup
+    let backup_members: Vec<_> = g.members.iter().filter(|m| m.copy_role == CopyRole::Backup).collect();
+    assert_eq!(backup_members.len(), 1, "backup copy must be recognized with CopyRole::Backup");
+    assert_eq!(backup_members[0].file_name, "report.pdf");
+
+    // Verify working copies
+    let working_members: Vec<_> = g.members.iter().filter(|m| m.copy_role == CopyRole::Working).collect();
+    assert_eq!(working_members.len(), 2, "two working copies in source");
+
+    // Critical Phase 2 Safety Guarantee (Section 4 & 97):
+    // The backup copy must NEVER be offered as a cleanup candidate!
+    let cleanup_candidates = g.cleanup_candidate_file_ids();
+    assert_eq!(cleanup_candidates.len(), 1, "only the extra working copy should be a cleanup candidate");
+    assert!(!cleanup_candidates.contains(&backup_members[0].id), "backup copy must NEVER be offered for cleanup");
+
+    // Reclaimable space only counts extra working copies (not protected backup copies)
+    assert_eq!(g.reclaimable_bytes(), content.len() as u64);
 }

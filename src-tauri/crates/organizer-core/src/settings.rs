@@ -16,6 +16,13 @@ pub struct AppSettings {
     /// Parallel hashing workers.
     #[serde(default = "default_concurrency")]
     pub max_hash_concurrency: usize,
+    /// Automatic shielding of sensitive directories (.ssh, .aws, credentials, etc.)
+    #[serde(default = "default_true")]
+    pub privacy_shield_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_retention() -> u32 {
@@ -34,6 +41,7 @@ impl Default for AppSettings {
             default_scan_location: None,
             quarantine_retention_days: default_retention(),
             max_hash_concurrency: default_concurrency(),
+            privacy_shield_enabled: true,
         }
     }
 }

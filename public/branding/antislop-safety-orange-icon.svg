@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Anti-AI-Slop: Zinc-900 industrial background -->
+  <rect width="256" height="256" rx="52" fill="#141416" />
+  <rect width="254" height="254" x="1" y="1" rx="51" fill="none" stroke="#27272A" stroke-width="2" />
+
+  <!-- Sovereign Nautical Anchor & Vault Shield -->
+  <!-- Bold, tangible geometry inspired by Swiss & German industrial tool marks -->
+  
+  <!-- Outer Ring (Mooring Shackle) in Safety Orange -->
+  <circle cx="128" cy="68" r="22" fill="none" stroke="#FF5722" stroke-width="8" />
+  <circle cx="128" cy="68" r="6" fill="#141416" />
+
+  <!-- Solid Horizontal Crossbar (Anchor Stock) -->
+  <rect x="76" y="98" width="104" height="12" rx="6" fill="#E4E4E7" />
+  <circle cx="76" cy="104" r="9" fill="#FF5722" />
+  <circle cx="180" cy="104" r="9" fill="#FF5722" />
+
+  <!-- Center Vault Shank with Document Notch -->
+  <path d="M 120 106 
+           L 136 106 
+           L 136 186 
+           L 120 186 
+           Z" 
+        fill="#FFFFFF" />
+
+  <!-- Sweeping Flukes (Protective Harbor Arms) -->
+  <path d="M 58 138 
+           C 58 196, 128 206, 128 206 
+           C 128 206, 198 196, 198 138" 
+        fill="none" 
+        stroke="#FF5722" 
+        stroke-width="12" 
+        stroke-linecap="round" />
+
+  <!-- Geometric Fluke Arrows -->
+  <polygon points="46,138 70,138 58,118" fill="#FF5722" />
+  <polygon points="186,138 210,138 198,118" fill="#FF5722" />
+</svg>

@@ -6,8 +6,10 @@
 //! already been moved into the application-managed quarantine area.
 
 pub mod backup;
+pub mod carving;
 pub mod cancel;
 pub mod deleter;
+pub mod document;
 pub mod dupdetect;
 pub mod fs_layer;
 pub mod hasher;
@@ -17,7 +19,12 @@ pub mod ops;
 pub mod quarantine;
 pub mod restore;
 pub mod scanner;
+pub mod health;
+pub mod perceptual;
+pub mod privacy;
+pub mod reconstruction;
 pub mod settings;
 pub mod store;
+pub mod triage;
 
 pub use cancel::CancelToken;

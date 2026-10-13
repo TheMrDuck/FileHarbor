@@ -3,6 +3,7 @@ use crate::manifest::{FileCategory, FileRecord, Manifest, ScenarioType};
 use anyhow::Result;
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -61,12 +62,25 @@ impl Default for GenerationConfig {
 }
 
 /// Progress reporting during generation
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GenerationProgress {
     pub directories_created: usize,
     pub files_created: usize,
     pub bytes_written: u64,
     pub duplicate_groups_created: usize,
+}
+
+impl<'a> TestScenarioContext<'a> {
+    pub fn report_progress(&self) {
+        if let Some(ref cb) = self.config.progress_callback {
+            cb(GenerationProgress {
+                directories_created: self.manifest.summary.directories,
+                files_created: *self.file_counter,
+                bytes_written: self.manifest.files.iter().map(|f| f.size_bytes).sum(),
+                duplicate_groups_created: self.duplicate_groups.len(),
+            });
+        }
+    }
 }
 
 /// Scenario registry with all available scenarios
@@ -297,20 +311,29 @@ fn generate_phase1_baseline(ctx: &mut TestScenarioContext) -> Result<()> {
     for _i in 0..normal_count {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         generate_normal_file(ctx, &files_dir, &base_dirs)?;
+        if (*ctx.file_counter).is_multiple_of(50) {
+            ctx.report_progress();
+        }
     }
+    ctx.report_progress();
 
     // 2. Generate exact duplicates (~20% of total, forming duplicate_groups groups)
     for _group_idx in 0..ctx.config.duplicate_groups.min(ctx.config.total_files / 3) {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         duplicate_group_counter += 1;
         generate_duplicate_group(ctx, &files_dir, &base_dirs, duplicate_group_counter)?;
+        if (*ctx.file_counter).is_multiple_of(50) {
+            ctx.report_progress();
+        }
     }
+    ctx.report_progress();
 
     // 3. Generate empty files
     for _i in 0..ctx.config.empty_files {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         generate_empty_file(ctx, &files_dir, &base_dirs)?;
     }
+    ctx.report_progress();
 
     // 3b. Generate same-size/different-content pairs
     for _i in 0..ctx.config.same_size_diff_content_pairs {
@@ -318,27 +341,32 @@ fn generate_phase1_baseline(ctx: &mut TestScenarioContext) -> Result<()> {
         same_size_counter += 1;
         generate_same_size_different_content(ctx, &files_dir, &base_dirs, same_size_counter)?;
     }
+    ctx.report_progress();
 
-// 4. Generate Unicode files
+    // 4. Generate Unicode files
     for _i in 0..ctx.config.unicode_files {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         generate_unicode_file(ctx, &files_dir, &base_dirs)?;
     }
+    ctx.report_progress();
 
     // 5. Generate nested/deep directory files
     for _i in 0..(ctx.config.total_files / 20).max(10) {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         generate_nested_file(ctx, &files_dir, ctx.config.nested_depth)?;
     }
+    ctx.report_progress();
 
     // 6. Generate large files
     for _i in 0..ctx.config.large_files {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         generate_large_file(ctx, &files_dir, &base_dirs)?;
     }
+    ctx.report_progress();
 
     // 7. Generate backup-like copies
     generate_backup_like_copies(ctx, &files_dir)?;
+    ctx.report_progress();
 
     ctx.manifest.finalize();
     Ok(())
@@ -366,7 +394,7 @@ fn generate_duplicates_scenario(ctx: &mut TestScenarioContext) -> Result<()> {
     for group_idx in 0..groups {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         
-let content_type = ContentType::random(&mut ctx.content_gen.rng());
+let content_type = ContentType::random(ctx.content_gen.rng());
         let content = ctx.content_gen.generate(
             &format!("dup-group-{}", group_idx),
             rand::thread_rng().gen_range(1024..10240),
@@ -516,7 +544,7 @@ fn generate_unicode_scenario(ctx: &mut TestScenarioContext) -> Result<()> {
         let full_path = files_dir.join(&rel_path);
         
         std::fs::create_dir_all(full_path.parent().unwrap())?;
-let content_type = ContentType::random(&mut ctx.content_gen.rng());
+let content_type = ContentType::random(ctx.content_gen.rng());
         let content = ctx.content_gen.generate(
             &format!("unicode-{}", ctx.file_counter),
             rand::thread_rng().gen_range(1024..51200),
@@ -663,7 +691,7 @@ fn generate_recovered_hdd_scenario(ctx: &mut TestScenarioContext) -> Result<()> 
 let (content, categories, expected_dup, expected_empty) = if file_type < 2 {
             // Duplicate
             let group = rng.gen_range(0..10);
-            let content_type = ContentType::random(&mut ctx.content_gen.rng());
+            let content_type = ContentType::random(ctx.content_gen.rng());
             let dup_content = ctx.content_gen.generate(
                 &format!("recovered-dup-{}", group),
                 rng.gen_range(1024..51200),
@@ -675,7 +703,7 @@ let (content, categories, expected_dup, expected_empty) = if file_type < 2 {
             (vec![], vec![FileCategory::Empty, FileCategory::Normal], Some(false), Some(true))
         } else {
             // Normal
-            let content_type = ContentType::random(&mut ctx.content_gen.rng());
+            let content_type = ContentType::random(ctx.content_gen.rng());
             (ctx.content_gen.generate(&format!("recovered-{}", ctx.file_counter), rng.gen_range(1024..102400), content_type), vec![FileCategory::Normal], Some(false), Some(false))
         };
         
@@ -695,7 +723,7 @@ let (content, categories, expected_dup, expected_empty) = if file_type < 2 {
             categories,
             duplicate_group: if expected_dup == Some(true) { Some(format!("dup-recovered-{:04}", rng.gen_range(0..10))) } else { None },
             expected_duplicate: expected_dup,
-            expected_empty: expected_empty,
+            expected_empty,
             role: Some("recovered".to_string()),
             content_type: Some("recovered".to_string()),
             modified_at: Some(ctx.config.base_date),
@@ -1048,7 +1076,7 @@ fn generate_performance_stress(ctx: &mut TestScenarioContext) -> Result<()> {
 
 // Helper functions
 
-fn generate_normal_file(ctx: &mut TestScenarioContext, base_dir: &Path, base_dirs: &[&str]) -> Result<()> {
+pub(crate) fn generate_normal_file(ctx: &mut TestScenarioContext, base_dir: &Path, base_dirs: &[&str]) -> Result<()> {
     let mut rng = rand::thread_rng();
     let dir = base_dirs[rng.gen_range(0..base_dirs.len())];
     let ext = ["txt", "md", "json", "csv", "pdf", "docx", "jpg", "png", "zip", "bin"][rng.gen_range(0..10)];
@@ -1058,7 +1086,7 @@ fn generate_normal_file(ctx: &mut TestScenarioContext, base_dir: &Path, base_dir
     
     std::fs::create_dir_all(full_path.parent().unwrap())?;
     
-let content_type = ContentType::random(&mut ctx.content_gen.rng());
+let content_type = ContentType::random(ctx.content_gen.rng());
     let content = ctx.content_gen.generate(
         &format!("normal-{}", ctx.file_counter),
         rng.gen_range(1024..102400),
@@ -1097,7 +1125,7 @@ fn generate_duplicate_group(
     
     // Generate the master content for this duplicate group
     let size = rng.gen_range(1024..102400);
-    let content_type = ContentType::random(&mut ctx.content_gen.rng());
+    let content_type = ContentType::random(ctx.content_gen.rng());
     let master_content = ctx.content_gen.generate(&format!("master-{}", group_num), size, content_type);
     let hash = ContentGenerator::sha256(&master_content);
     
@@ -1250,7 +1278,7 @@ fn generate_unicode_file(ctx: &mut TestScenarioContext, base_dir: &Path, base_di
     
     std::fs::create_dir_all(full_path.parent().unwrap())?;
     
-let content_type = ContentType::random(&mut ctx.content_gen.rng());
+let content_type = ContentType::random(ctx.content_gen.rng());
     let content = ctx.content_gen.generate(
         &format!("unicode-{}", ctx.file_counter),
         rng.gen_range(1024..51200),
@@ -1367,12 +1395,12 @@ fn generate_backup_like_copies(ctx: &mut TestScenarioContext, base_dir: &Path) -
     std::fs::create_dir_all(&backup_dir)?;
     
     let mut rng = rand::thread_rng();
-    let count = (ctx.config.total_files / 50).max(1).min(10);
+    let count = (ctx.config.total_files / 50).clamp(1, 10);
     
     for i in 0..count {
         if *ctx.file_counter >= ctx.config.total_files { break; }
         
-let content_type = ContentType::random(&mut ctx.content_gen.rng());
+let content_type = ContentType::random(ctx.content_gen.rng());
         let content = ctx.content_gen.generate(
             &format!("backup-{}", i),
             rng.gen_range(1024..102400),

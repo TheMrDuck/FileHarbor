@@ -203,6 +203,7 @@ fn test_manifest_write_and_read() {
                 size_bytes: 100,
                 sha256: "abc123".to_string(),
                 verified: true,
+                content_object: None,
             },
         ],
     };
@@ -318,7 +319,16 @@ fn test_engine_full_backup_creates_verified_snapshot() {
     assert_eq!(summary.files_new, 1);
     assert_eq!(summary.files_failed, 0);
     assert_eq!(summary.snapshot_id, 1);
-    assert!(dest_dir.join("report.pdf").exists());
+    let pool_dir = dest_dir.join(".fileharbor").join("pool");
+    assert!(pool_dir.exists());
+
+    // Verify restoration directly from pool
+    let restore_dir = tmp.path().join("restored");
+    let res = restore::restore_from_backup(&store, summary.snapshot_id, &restore_dir, &[]).unwrap();
+    assert_eq!(res.restored, 1);
+    assert_eq!(res.verified, 1);
+    assert!(restore_dir.join("report.pdf").exists());
+    assert_eq!(fs::read(restore_dir.join("report.pdf")).unwrap(), b"report content");
 
     let snapshots = get_backup_snapshots(&store, set.id).unwrap();
     assert_eq!(snapshots.len(), 1);
@@ -367,7 +377,7 @@ fn test_engine_backup_respects_cancellation() {
     fs::create_dir_all(&source_dir).unwrap();
     fs::create_dir_all(&dest_dir).unwrap();
     for i in 0..50 {
-        fs::write(source_dir.join(format!("file_{i}.bin")), &vec![0u8; 1024]).unwrap();
+        fs::write(source_dir.join(format!("file_{i}.bin")), vec![0u8; 1024]).unwrap();
     }
 
     let store = Store::open(&store_path).unwrap();
@@ -411,4 +421,254 @@ fn test_engine_backup_handles_deleted_files() {
     assert_eq!(s2.files_new, 0);
     assert_eq!(s2.files_changed, 0);
     assert_eq!(s2.files_unchanged, 1);
+}
+
+fn count_pool_objects(dest_dir: &std::path::Path) -> usize {
+    let pool_dir = dest_dir.join(".fileharbor").join("pool");
+    if !pool_dir.exists() {
+        return 0;
+    }
+    let mut count = 0;
+    if let Ok(shards) = fs::read_dir(&pool_dir) {
+        for shard in shards.flatten() {
+            if shard.path().is_dir() {
+                if let Ok(objs) = fs::read_dir(shard.path()) {
+                    for obj in objs.flatten() {
+                        if obj.path().is_file() {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+
+#[test]
+fn test_historical_version_restoration() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store_path = tmp.path().join("store.db");
+    let source_dir = tmp.path().join("source");
+    let dest_dir = tmp.path().join("backup");
+
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+    let file_path = source_dir.join("document.txt");
+    fs::write(&file_path, b"Version 1 content").unwrap();
+
+    let store = Store::open(&store_path).unwrap();
+    let set = create_backup_set(&store, "Docs", &source_dir.to_string_lossy(), &dest_dir.to_string_lossy(), BackupSchedule::Manual, RetentionPolicy::KeepAll, VerificationMode::Standard).unwrap();
+
+    let engine = BackupEngine::new(&store);
+    let s1 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s1.status, BackupRunStatus::Completed);
+
+    // Modify source file to Version 2
+    fs::write(&file_path, b"Version 2 modified content").unwrap();
+
+    let s2 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s2.status, BackupRunStatus::Completed);
+
+    // Both versions must exist in the pool
+    assert_eq!(count_pool_objects(&dest_dir), 2);
+
+    // Restore Snapshot 1 -> must yield Version 1
+    let restore_s1 = tmp.path().join("restore_s1");
+    let r1 = restore::restore_from_backup(&store, s1.snapshot_id, &restore_s1, &[]).unwrap();
+    assert_eq!(r1.restored, 1);
+    assert_eq!(r1.verified, 1);
+    assert_eq!(fs::read(restore_s1.join("document.txt")).unwrap(), b"Version 1 content");
+
+    // Restore Snapshot 2 -> must yield Version 2
+    let restore_s2 = tmp.path().join("restore_s2");
+    let r2 = restore::restore_from_backup(&store, s2.snapshot_id, &restore_s2, &[]).unwrap();
+    assert_eq!(r2.restored, 1);
+    assert_eq!(r2.verified, 1);
+    assert_eq!(fs::read(restore_s2.join("document.txt")).unwrap(), b"Version 2 modified content");
+}
+
+#[test]
+fn test_same_content_multi_snapshot_deduplication() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store_path = tmp.path().join("store.db");
+    let source_dir = tmp.path().join("source");
+    let dest_dir = tmp.path().join("backup");
+
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let store = Store::open(&store_path).unwrap();
+    let set = create_backup_set(&store, "Dedup", &source_dir.to_string_lossy(), &dest_dir.to_string_lossy(), BackupSchedule::Manual, RetentionPolicy::KeepLastN(1), VerificationMode::Standard).unwrap();
+    let engine = BackupEngine::new(&store);
+
+    // Snapshot 1: A.txt = "hello"
+    fs::write(source_dir.join("A.txt"), b"hello").unwrap();
+    let s1 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s1.status, BackupRunStatus::Completed);
+    assert_eq!(count_pool_objects(&dest_dir), 1);
+
+    // Snapshot 2: B.txt = "hello" (same content, different filename)
+    fs::remove_file(source_dir.join("A.txt")).unwrap();
+    fs::write(source_dir.join("B.txt"), b"hello").unwrap();
+    let s2 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s2.status, BackupRunStatus::Completed);
+    // Dedup: pool still contains exactly 1 physical object!
+    assert_eq!(count_pool_objects(&dest_dir), 1);
+
+    // Snapshot 3: C.txt = "hello"
+    fs::remove_file(source_dir.join("B.txt")).unwrap();
+    fs::write(source_dir.join("C.txt"), b"hello").unwrap();
+    let s3 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s3.status, BackupRunStatus::Completed);
+    assert_eq!(count_pool_objects(&dest_dir), 1);
+
+    // Apply retention KeepLastN(1) -> retains only S3
+    let ret_res = apply_retention(&store, set.id, &RetentionPolicy::KeepLastN(1)).unwrap();
+    assert_eq!(ret_res.deleted_snapshots, 2);
+
+    // Pool object for "hello" must still remain because S3 references it!
+    assert_eq!(count_pool_objects(&dest_dir), 1);
+
+    // Restore S3 to verify it remains 100% restorable
+    let restore_dir = tmp.path().join("restore_s3");
+    let res = restore::restore_from_backup(&store, s3.snapshot_id, &restore_dir, &[]).unwrap();
+    assert_eq!(res.restored, 1);
+    assert_eq!(res.verified, 1);
+    assert_eq!(fs::read(restore_dir.join("C.txt")).unwrap(), b"hello");
+}
+
+#[test]
+fn test_complex_retention_and_survivability() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store_path = tmp.path().join("store.db");
+    let source_dir = tmp.path().join("source");
+    let dest_dir = tmp.path().join("backup");
+
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let store = Store::open(&store_path).unwrap();
+    let set = create_backup_set(&store, "ComplexRetention", &source_dir.to_string_lossy(), &dest_dir.to_string_lossy(), BackupSchedule::Manual, RetentionPolicy::KeepAll, VerificationMode::Standard).unwrap();
+    let engine = BackupEngine::new(&store);
+
+    // Snapshot 1: report.pdf = A
+    fs::write(source_dir.join("report.pdf"), b"content A").unwrap();
+    let s1 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s1.status, BackupRunStatus::Completed);
+
+    // Snapshot 2: report.pdf = B, photo.jpg = X
+    fs::write(source_dir.join("report.pdf"), b"content B").unwrap();
+    fs::write(source_dir.join("photo.jpg"), b"content X").unwrap();
+    let s2 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s2.status, BackupRunStatus::Completed);
+
+    // Snapshot 3: report.pdf = C, photo.jpg = X (unchanged)
+    fs::write(source_dir.join("report.pdf"), b"content C").unwrap();
+    let s3 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s3.status, BackupRunStatus::Completed);
+
+    // Pool contains 4 distinct objects: A, B, C, X
+    assert_eq!(count_pool_objects(&dest_dir), 4);
+
+    // Prune Snapshot 1 by applying KeepLastN(2)
+    let ret_res = apply_retention(&store, set.id, &RetentionPolicy::KeepLastN(2)).unwrap();
+    assert_eq!(ret_res.deleted_snapshots, 1);
+
+    // Expected: A is unreferenced and deleted. B, C, X remain! (3 pool objects)
+    assert_eq!(count_pool_objects(&dest_dir), 3);
+
+    // Restore Snapshot 2 -> must yield report=B, photo=X
+    let restore_s2 = tmp.path().join("restore_s2");
+    let r2 = restore::restore_from_backup(&store, s2.snapshot_id, &restore_s2, &[]).unwrap();
+    assert_eq!(r2.restored, 2);
+    assert_eq!(r2.verified, 2);
+    assert_eq!(fs::read(restore_s2.join("report.pdf")).unwrap(), b"content B");
+    assert_eq!(fs::read(restore_s2.join("photo.jpg")).unwrap(), b"content X");
+
+    // Restore Snapshot 3 -> must yield report=C, photo=X
+    let restore_s3 = tmp.path().join("restore_s3");
+    let r3 = restore::restore_from_backup(&store, s3.snapshot_id, &restore_s3, &[]).unwrap();
+    assert_eq!(r3.restored, 2);
+    assert_eq!(r3.verified, 2);
+    assert_eq!(fs::read(restore_s3.join("report.pdf")).unwrap(), b"content C");
+    assert_eq!(fs::read(restore_s3.join("photo.jpg")).unwrap(), b"content X");
+}
+
+#[test]
+fn test_corrupt_or_missing_object_safely_aborts_gc_and_restore() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store_path = tmp.path().join("store.db");
+    let source_dir = tmp.path().join("source");
+    let dest_dir = tmp.path().join("backup");
+
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+    fs::write(source_dir.join("critical.data"), b"important payload").unwrap();
+
+    let store = Store::open(&store_path).unwrap();
+    let set = create_backup_set(&store, "SafeFail", &source_dir.to_string_lossy(), &dest_dir.to_string_lossy(), BackupSchedule::Manual, RetentionPolicy::KeepAll, VerificationMode::Standard).unwrap();
+    let engine = BackupEngine::new(&store);
+    let s1 = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(s1.status, BackupRunStatus::Completed);
+
+    // Create Snapshot 2
+    fs::write(source_dir.join("other.data"), b"other payload").unwrap();
+    let _s2 = engine.run_backup(&set, &dest_dir).unwrap();
+
+    // Manually delete pool object for critical.data
+    let hash = organizer_core::hasher::hash_file(&source_dir.join("critical.data")).unwrap();
+    let rel_pool = manifest::pool_rel_path(&hash).unwrap();
+    let pool_file = dest_dir.join(".fileharbor").join("pool").join(&rel_pool);
+    assert!(pool_file.exists());
+    fs::remove_file(&pool_file).unwrap();
+
+    // Attempting to restore Snapshot 1 must fail safely
+    let restore_dir = tmp.path().join("failed_restore");
+    let r_fail = restore::restore_from_backup(&store, s1.snapshot_id, &restore_dir, &[]);
+    // Should report failure
+    if let Ok(res) = r_fail {
+        assert_eq!(res.failed, 1);
+        assert!(!restore_dir.join("critical.data").exists());
+    }
+
+    // Attempting retention must detect missing object in retained snapshot and abort pre-flight!
+    let gc_fail = apply_retention(&store, set.id, &RetentionPolicy::KeepLastN(1));
+    assert!(gc_fail.is_err());
+}
+
+#[test]
+fn test_interrupted_staging_recovery() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store_path = tmp.path().join("store.db");
+    let source_dir = tmp.path().join("source");
+    let dest_dir = tmp.path().join("backup");
+
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    // Inject stale partial artifacts in .fileharbor-partial
+    let stale_dir = dest_dir.join(".fileharbor-partial").join("pool");
+    fs::create_dir_all(&stale_dir).unwrap();
+    fs::write(stale_dir.join("deadbeef.partial"), b"incomplete bytes").unwrap();
+
+    fs::write(source_dir.join("fresh.txt"), b"fresh content").unwrap();
+
+    let store = Store::open(&store_path).unwrap();
+    let set = create_backup_set(&store, "StagingRecovery", &source_dir.to_string_lossy(), &dest_dir.to_string_lossy(), BackupSchedule::Manual, RetentionPolicy::KeepAll, VerificationMode::Standard).unwrap();
+    let engine = BackupEngine::new(&store);
+
+    let summary = engine.run_backup(&set, &dest_dir).unwrap();
+    assert_eq!(summary.status, BackupRunStatus::Completed);
+    assert_eq!(summary.files_new, 1);
+
+    // Stale partial directory must have been cleaned up
+    assert!(!dest_dir.join(".fileharbor-partial").exists());
+
+    // Restore should succeed cleanly
+    let restore_dir = tmp.path().join("restored_fresh");
+    let res = restore::restore_from_backup(&store, summary.snapshot_id, &restore_dir, &[]).unwrap();
+    assert_eq!(res.restored, 1);
+    assert_eq!(res.verified, 1);
+    assert_eq!(fs::read(restore_dir.join("fresh.txt")).unwrap(), b"fresh content");
 }

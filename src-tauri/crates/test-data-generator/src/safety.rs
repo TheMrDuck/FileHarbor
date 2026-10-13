@@ -7,8 +7,25 @@ pub fn is_dangerous_path(path: &Path) -> bool {
     let path_str = path.to_string_lossy().to_lowercase();
     
     // Check for filesystem roots
-    if path_str == "/" || path_str == "\\" || path_str == "c:\\" || path_str == "c:/" {
+    if path_str == "/" || path_str == "\\" || path_str == "c:\\" || path_str == "c:/" || path_str == "c:" {
         return true;
+    }
+
+    // Explicitly designated test data folders (e.g., AppData/.../TestData or /test-data) are safe
+    // as long as they are not inside critical OS system folders.
+    let is_test_data = path.components().any(|c| {
+        let s = c.as_os_str().to_string_lossy();
+        s.eq_ignore_ascii_case("testdata") || s.eq_ignore_ascii_case("test-data")
+    });
+
+    if is_test_data {
+        let critical_system_dirs = ["windows", "system32", "syswow64", "program files", "program files (x86)"];
+        for dir in &critical_system_dirs {
+            if path_str.contains(&format!("\\{dir}")) || path_str.contains(&format!("/{dir}")) {
+                return true;
+            }
+        }
+        return false;
     }
     
     // Check for user home directory
@@ -218,6 +235,7 @@ impl SafeCleanup {
             for entry in walkdir::WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
                 if entry.file_type().is_file() {
                     let mut perms = std::fs::metadata(entry.path())?.permissions();
+                    #[allow(clippy::permissions_set_readonly_false)]
                     perms.set_readonly(false);
                     std::fs::set_permissions(entry.path(), perms)?;
                 }
@@ -264,6 +282,13 @@ mod tests {
         // Create the path if it doesn't exist
         let _ = std::fs::create_dir_all(&safe_path);
         assert!(!is_dangerous_path(&safe_path));
+    }
+
+    #[test]
+    fn test_appdata_testdata_path_is_safe() {
+        let app_data = dirs::data_dir().unwrap_or_else(|| PathBuf::from("C:\\AppData"));
+        let path = app_data.join("com.fileharbor.app").join("TestData").join("phase1-baseline");
+        assert!(!is_dangerous_path(&path));
     }
 
     #[test]

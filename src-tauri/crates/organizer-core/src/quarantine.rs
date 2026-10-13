@@ -171,6 +171,138 @@ pub fn quarantine_files(
     })
 }
 
+/// Move arbitrary filesystem paths into quarantine as one batch operation.
+///
+/// This does not require prior file records in the database; it queries
+/// filesystem metadata, computes hashes, creates operations and quarantine items,
+/// and writes the batch manifest.
+pub fn quarantine_paths(
+    store: &Store,
+    paths: &[PathBuf],
+    quarantine_root: &Path,
+    cancel: &CancelToken,
+) -> Result<QuarantineBatchResult, String> {
+    if paths.is_empty() {
+        return Ok(QuarantineBatchResult {
+            report: BatchReport { operation_id: -1, batch_id: String::new(), succeeded: 0, failed: 0, failures: vec![] },
+            quarantined_item_ids: vec![],
+        });
+    }
+
+    let batch_id = ops::new_batch_id("quarantine");
+    logutil::info("quarantine_paths_started", &[("batch", &batch_id), ("count", &paths.len().to_string())]);
+
+    let op_id = store.insert_operation(&batch_id, OperationKind::Quarantine)?;
+    let batch_dir = quarantine_root.join(&batch_id);
+    fs::create_dir_all(&batch_dir)
+        .map_err(|e| format!("unable to create quarantine directory {}: {e}", batch_dir.display()))?;
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut failures: Vec<FailedItem> = Vec::new();
+    let mut item_ids: Vec<i64> = Vec::new();
+    let mut manifest_items: Vec<ManifestEntry> = Vec::new();
+
+    for (seq, src_path) in paths.iter().enumerate() {
+        if cancel.is_cancelled() {
+            failed += paths.len() - seq;
+            break;
+        }
+
+        let path_str = path_to_string(src_path);
+        if !src_path.is_file() {
+            failed += 1;
+            failures.push(FailedItem {
+                path: path_str,
+                error: "file does not exist or is not a regular file".to_string(),
+            });
+            continue;
+        }
+
+        let meta = match fs::metadata(src_path) {
+            Ok(m) => m,
+            Err(e) => {
+                failed += 1;
+                failures.push(FailedItem { path: path_str, error: e.to_string() });
+                continue;
+            }
+        };
+        let size_bytes = meta.len();
+        let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown_file").to_string();
+
+        let token = CancelToken::new();
+        let hash = match hasher::sha256_file(src_path, &token, hasher::DEFAULT_CHUNK_SIZE) {
+            Ok(hasher::HashOutcome::Computed(h)) => Some(h),
+            _ => None,
+        };
+
+        let item_row = store.insert_operation_item(
+            op_id,
+            Some(&path_str),
+            None,
+            None,
+            OpItemStatus::InProgress,
+            None,
+        )?;
+
+        let safe_name = sanitize_filename(&file_name);
+        let dst = batch_dir.join(format!("{:06}_{safe_name}", seq + 1));
+
+        match transfer(src_path, &dst, size_bytes, hash.as_deref()) {
+            Ok(()) => {
+                let qpath = path_to_string(&dst);
+                let qid = store.insert_quarantine_item(
+                    op_id,
+                    &path_str,
+                    &qpath,
+                    &file_name,
+                    size_bytes,
+                    hash.as_deref(),
+                )?;
+                store.update_operation_item(item_row, OpItemStatus::Completed, Some(&qpath), None)?;
+                manifest_items.push(ManifestEntry {
+                    original_path: path_str.clone(),
+                    quarantine_path: qpath,
+                    size_bytes,
+                    hash: hash.clone(),
+                });
+                succeeded += 1;
+                item_ids.push(qid);
+                logutil::info("file_quarantined", &[("from", &path_str)]);
+            }
+            Err(err) => {
+                failed += 1;
+                failures.push(FailedItem { path: path_str.clone(), error: err.clone() });
+                store.update_operation_item(item_row, OpItemStatus::Failed, None, Some(&err))?;
+                logutil::warn("quarantine_failed", &[("path", &path_str), ("error", &err)]);
+            }
+        }
+    }
+
+    let status = if cancel.is_cancelled() {
+        if succeeded > 0 {
+            OperationStatus::PartiallyCompleted
+        } else {
+            OperationStatus::Cancelled
+        }
+    } else if failed == 0 {
+        OperationStatus::Completed
+    } else if succeeded > 0 {
+        OperationStatus::PartiallyCompleted
+    } else {
+        OperationStatus::Failed
+    };
+    store.finish_operation(op_id, status, Some(&serde_detail(succeeded, failed)))?;
+
+    write_manifest(&batch_dir, &batch_id, &manifest_items);
+
+    logutil::info("quarantine_paths_finished", &[("succeeded", &succeeded.to_string()), ("failed", &failed.to_string())]);
+    Ok(QuarantineBatchResult {
+        report: BatchReport { operation_id: op_id, batch_id, succeeded, failed, failures },
+        quarantined_item_ids: item_ids,
+    })
+}
+
 fn serde_detail(succeeded: usize, failed: usize) -> String {
     format!(r#"{{"succeeded":{succeeded},"failed":{failed}}}"#)
 }

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::backup::models::*;
 use crate::backup::errors::*;
 use crate::backup::planner::compute_backup_plan;
-use crate::backup::manifest::{write_manifest, BackupManifest, ManifestSource, ManifestFile};
+use crate::backup::manifest::{write_manifest, BackupManifest, ManifestSource, ManifestFile, pool_rel_path};
 use crate::backup::destination::validate_destination;
 use crate::store::Store;
 use crate::hasher;
@@ -97,55 +97,112 @@ impl<'a> BackupEngine<'a> {
 
         let files_to_copy: Vec<&PlannedFile> = plan.new_files.iter().chain(plan.changed_files.iter()).collect();
 
+        let pool_dir = destination_root.join(".fileharbor").join("pool");
+        let partial_pool_dir = destination_root.join(".fileharbor-partial").join("pool");
+        let _ = fs::create_dir_all(&pool_dir);
+        let _ = fs::create_dir_all(&partial_pool_dir);
+
         for planned in &files_to_copy {
             self.cancel_token.check()?;
 
             let rel_path = self.relative_path(backup_set, &planned.source_path);
-            let dest_path = destination_root.join(&rel_path);
-            let partial_path = dest_path.with_extension("fileharbor-partial");
+            let source_path = Path::new(&planned.source_path);
 
-            if let Some(parent) = dest_path.parent() {
-                if let Err(_) = fs::create_dir_all(parent) {
+            // Compute or verify SHA-256 of source file
+            let hash = match &planned.sha256 {
+                Some(h) if h.len() == 64 => h.clone(),
+                _ => match hasher::hash_file(source_path) {
+                    Ok(h) => h,
+                    Err(_) => {
+                        files_failed += 1;
+                        files_processed += 1;
+                        continue;
+                    }
+                },
+            };
+
+            let rel_pool = match pool_rel_path(&hash) {
+                Ok(p) => p,
+                Err(_) => {
                     files_failed += 1;
+                    files_processed += 1;
                     continue;
+                }
+            };
+
+            let dest_pool_path = pool_dir.join(&rel_pool);
+
+            // Check if object already exists in pool and verify it (size + content hash)
+            let mut already_in_pool = false;
+            if dest_pool_path.exists() {
+                if let Ok(meta) = fs::metadata(&dest_pool_path) {
+                    if meta.len() == planned.size_bytes {
+                        if let Ok(existing_hash) = hasher::hash_file(&dest_pool_path) {
+                            if existing_hash == hash {
+                                already_in_pool = true;
+                            }
+                        }
+                    }
                 }
             }
 
-            match self.copy_file_atomic(Path::new(&planned.source_path), &partial_path) {
-                Ok(copied_bytes) => {
-                    match hasher::hash_file(&partial_path) {
-                        Ok(computed_hash) => {
-                            let expected_hash = planned.sha256.as_deref().unwrap_or("");
-                            if computed_hash == expected_hash {
-                                if let Err(_) = fs::rename(&partial_path, &dest_path) {
+            if already_in_pool {
+                copied_files.push(BackupFile {
+                    id: 0,
+                    snapshot_id: 0,
+                    relative_path: rel_path,
+                    size_bytes: planned.size_bytes,
+                    sha256: hash,
+                    status: BackupFileStatus::Verified,
+                    content_id: None,
+                    error: None,
+                });
+                files_verified += 1;
+            } else {
+                let partial_path = partial_pool_dir.join(format!("{}.fileharbor-partial", hash));
+                if let Some(parent) = partial_path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+
+                match self.copy_file_atomic(source_path, &partial_path) {
+                    Ok(copied_bytes) => {
+                        match hasher::hash_file(&partial_path) {
+                            Ok(computed_hash) => {
+                                if computed_hash == hash {
+                                    if let Some(parent) = dest_pool_path.parent() {
+                                        let _ = fs::create_dir_all(parent);
+                                    }
+                                    if fs::rename(&partial_path, &dest_pool_path).is_err() {
+                                        let _ = fs::remove_file(&partial_path);
+                                        files_failed += 1;
+                                    } else {
+                                        bytes_transferred += copied_bytes;
+                                        copied_files.push(BackupFile {
+                                            id: 0,
+                                            snapshot_id: 0,
+                                            relative_path: rel_path,
+                                            size_bytes: copied_bytes,
+                                            sha256: computed_hash,
+                                            status: BackupFileStatus::Verified,
+                                            content_id: None,
+                                            error: None,
+                                        });
+                                        files_verified += 1;
+                                    }
+                                } else {
                                     let _ = fs::remove_file(&partial_path);
                                     files_failed += 1;
-                                } else {
-                                    bytes_transferred += copied_bytes;
-                                    copied_files.push(BackupFile {
-                                        id: 0,
-                                        snapshot_id: 0,
-                                        relative_path: rel_path,
-                                        size_bytes: copied_bytes,
-                                        sha256: computed_hash,
-                                        status: BackupFileStatus::Pending,
-                                        content_id: None,
-                                        error: None,
-                                    });
                                 }
-                            } else {
+                            }
+                            Err(_) => {
                                 let _ = fs::remove_file(&partial_path);
                                 files_failed += 1;
                             }
                         }
-                        Err(_) => {
-                            let _ = fs::remove_file(&partial_path);
-                            files_failed += 1;
-                        }
                     }
-                }
-                Err(_) => {
-                    files_failed += 1;
+                    Err(_) => {
+                        files_failed += 1;
+                    }
                 }
             }
 
@@ -182,35 +239,82 @@ impl<'a> BackupEngine<'a> {
             self.cancel_token.check()?;
 
             let rel_path = self.relative_path(backup_set, &planned.source_path);
-            let dest_path = destination_root.join(&rel_path);
-
-            if dest_path.exists() {
-                if let Ok(computed_hash) = hasher::hash_file(&dest_path) {
-                    let expected_hash = planned.sha256.as_deref().unwrap_or("");
-                    if computed_hash == expected_hash {
-                        copied_files.push(BackupFile {
-                            id: 0,
-                            snapshot_id: 0,
-                            relative_path: rel_path,
-                            size_bytes: planned.size_bytes,
-                            sha256: computed_hash,
-                            status: BackupFileStatus::Verified,
-                            content_id: None,
-                            error: None,
-                        });
-                        files_verified += 1;
-                    } else {
-                        files_failed += 1;
-                    }
-                } else {
+            let hash = match &planned.sha256 {
+                Some(h) if h.len() == 64 => h.clone(),
+                _ => {
                     files_failed += 1;
+                    files_processed += 1;
+                    continue;
                 }
+            };
+
+            let rel_pool = match pool_rel_path(&hash) {
+                Ok(p) => p,
+                Err(_) => {
+                    files_failed += 1;
+                    files_processed += 1;
+                    continue;
+                }
+            };
+
+            let dest_pool_path = pool_dir.join(&rel_pool);
+            let mut valid = false;
+
+            if dest_pool_path.exists() {
+                if let Ok(meta) = fs::metadata(&dest_pool_path) {
+                    if meta.len() == planned.size_bytes {
+                        if let Ok(computed_hash) = hasher::hash_file(&dest_pool_path) {
+                            if computed_hash == hash {
+                                valid = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If object was somehow removed from pool, recover it from source
+            if !valid {
+                let source_path = Path::new(&planned.source_path);
+                if source_path.exists() {
+                    let partial_path = partial_pool_dir.join(format!("{}.fileharbor-partial", hash));
+                    if let Some(parent) = partial_path.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    if let Ok(copied_bytes) = self.copy_file_atomic(source_path, &partial_path) {
+                        if let Ok(computed_hash) = hasher::hash_file(&partial_path) {
+                            if computed_hash == hash {
+                                if let Some(parent) = dest_pool_path.parent() {
+                                    let _ = fs::create_dir_all(parent);
+                                }
+                                if fs::rename(&partial_path, &dest_pool_path).is_ok() {
+                                    bytes_transferred += copied_bytes;
+                                    valid = true;
+                                }
+                            }
+                        }
+                        let _ = fs::remove_file(&partial_path);
+                    }
+                }
+            }
+
+            if valid {
+                copied_files.push(BackupFile {
+                    id: 0,
+                    snapshot_id: 0,
+                    relative_path: rel_path,
+                    size_bytes: planned.size_bytes,
+                    sha256: hash,
+                    status: BackupFileStatus::Verified,
+                    content_id: None,
+                    error: None,
+                });
+                files_verified += 1;
             } else {
                 files_failed += 1;
             }
 
             files_processed += 1;
-            if files_processed % 100 == 0 || files_processed == plan.total_files {
+            if files_processed.is_multiple_of(100) || files_processed == plan.total_files {
                 self.emit_progress(
                     run_id,
                     BackupRunStatus::Running,
@@ -224,6 +328,10 @@ impl<'a> BackupEngine<'a> {
                 );
             }
         }
+
+        // Clean up transient staging directory
+        let _ = fs::remove_dir_all(&partial_pool_dir);
+        let _ = fs::remove_dir_all(destination_root.join(".fileharbor-partial"));
 
         for file in &mut copied_files {
             if file.status == BackupFileStatus::Pending {
@@ -320,11 +428,11 @@ impl<'a> BackupEngine<'a> {
             return Err(BackupError::SourceMissing(source_path.to_string()));
         }
 
-        self.scan_dir_recursive(root, root, &mut files)?;
+        self.scan_dir_recursive(root, &mut files)?;
         Ok(files)
     }
 
-    fn scan_dir_recursive(&self, root: &Path, dir: &Path, files: &mut Vec<FileRecord>) -> Result<(), BackupError> {
+    fn scan_dir_recursive(&self, dir: &Path, files: &mut Vec<FileRecord>) -> Result<(), BackupError> {
         self.cancel_token.check()?;
 
         let entries = match fs::read_dir(dir) {
@@ -346,7 +454,7 @@ impl<'a> BackupEngine<'a> {
 
             if !metadata.is_file() {
                 if metadata.is_dir() && !is_symlink(&path) {
-                    self.scan_dir_recursive(root, &path, files)?;
+                    self.scan_dir_recursive(&path, files)?;
                 }
                 continue;
             }
@@ -422,6 +530,7 @@ impl<'a> BackupEngine<'a> {
                 hash_status,
                 scan_status,
                 error: None,
+                copy_role: CopyRole::Working,
             });
         }
 
@@ -468,6 +577,7 @@ impl<'a> BackupEngine<'a> {
         Ok(total)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_snapshot(
         &self,
         run_id: i64,
@@ -537,6 +647,7 @@ impl<'a> BackupEngine<'a> {
                 size_bytes: f.size_bytes,
                 sha256: f.sha256.clone(),
                 verified: matches!(f.status, BackupFileStatus::Verified),
+                content_object: pool_rel_path(&f.sha256).ok().map(|p| p.to_string_lossy().replace('\\', "/")),
             }).collect(),
         };
 
@@ -545,6 +656,7 @@ impl<'a> BackupEngine<'a> {
         Ok(snapshot_id)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_progress(
         &self,
         run_id: i64,

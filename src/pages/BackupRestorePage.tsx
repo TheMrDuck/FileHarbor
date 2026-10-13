@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api";
-import type { BackupSnapshot, RestorePreview, RestoreConflictPolicy } from "../types";
+import type { BackupSnapshot, BackupRestorePreview, RestoreConflictPolicy } from "../types";
 import { formatBytes, formatDate } from "../api";
 
 interface Props {
-  onNavigate: (page: string) => void;
+  snapshotId?: number;
+  onNavigate?: (page: string, opts?: { setId?: number }) => void;
 }
 
-export default function BackupRestorePage({ onNavigate: _onNavigate }: Props) {
+export default function BackupRestorePage({ snapshotId: propSnapshotId, onNavigate }: Props) {
   const { snapshotId } = useParams<{ snapshotId: string }>();
-  const navigate = useNavigate();
-  const snapshotIdNum = parseInt(snapshotId || "0", 10);
+  const snapshotIdNum = propSnapshotId ?? parseInt(snapshotId || "0", 10);
   const [snapshot, setSnapshot] = useState<BackupSnapshot | null>(null);
-  const [preview, setPreview] = useState<RestorePreview | null>(null);
+  const [preview, setPreview] = useState<BackupRestorePreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -72,7 +72,7 @@ export default function BackupRestorePage({ onNavigate: _onNavigate }: Props) {
       } else {
         setError(null);
         alert(`Restore completed successfully! ${result.restored} files restored, ${result.verified} verified.`);
-        navigate("/backups");
+        if (onNavigate) onNavigate("backups");
       }
     } catch (e) {
       setError(String(e));
@@ -89,7 +89,10 @@ export default function BackupRestorePage({ onNavigate: _onNavigate }: Props) {
     return (
       <section>
         <p className="form-error" role="alert">Error: {error}</p>
-        <button className="btn btn-secondary" onClick={() => navigate("/backups")}>
+        <button
+          className="btn btn-secondary"
+          onClick={() => onNavigate && onNavigate("backups")}
+        >
           Back to Backups
         </button>
       </section>
@@ -106,7 +109,10 @@ export default function BackupRestorePage({ onNavigate: _onNavigate }: Props) {
     <section className="backup-restore">
       <header className="page-header">
         <h2>Restore from Backup</h2>
-        <button className="btn btn-ghost" onClick={() => navigate("/backups")}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => onNavigate && onNavigate("backups")}
+        >
           Back
         </button>
       </header>
@@ -171,7 +177,10 @@ export default function BackupRestorePage({ onNavigate: _onNavigate }: Props) {
       </div>
 
       <div className="wizard-actions">
-        <button className="btn btn-secondary" onClick={() => navigate("/backups")}>
+        <button
+          className="btn btn-secondary"
+          onClick={() => onNavigate && onNavigate("backups")}
+        >
           Cancel
         </button>
         <button

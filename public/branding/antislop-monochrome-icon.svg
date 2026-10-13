@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Anti-AI-Slop: Pure Swiss/Nordic High-Contrast Architectural Mark -->
+  <rect width="256" height="256" rx="52" fill="#0C0E12" />
+  <rect width="254" height="254" x="1" y="1" rx="51" fill="none" stroke="#1F232D" stroke-width="2" />
+
+  <!-- Clean Interlocking Architectural Harbor Pier Monogram (F & H) -->
+  <g transform="translate(56, 52)">
+    <!-- Primary Pier Column (F Stem / Left H Upright) -->
+    <path d="M 0 0 L 28 0 L 28 152 L 0 152 Z" fill="#F8FAFC" />
+
+    <!-- Top Breakwater Arm (F Top Bar) -->
+    <path d="M 28 0 L 118 0 C 132 0, 144 12, 144 26 L 144 32 L 28 32 Z" fill="#F8FAFC" />
+
+    <!-- Middle Docking Crossbeam (F Mid Bar & H Bridge) -->
+    <path d="M 28 62 L 96 62 C 104 62, 110 68, 110 76 L 110 90 L 28 90 Z" fill="#E2E8F0" />
+
+    <!-- Secondary Protective Seawall (Right H Pillar) -->
+    <path d="M 116 62 L 144 62 L 144 152 L 116 152 Z" fill="#E2E8F0" />
+
+    <!-- Sheltered Harbor Basin Notch (Negative space cutout at base) -->
+    <path d="M 46 118 C 62 108, 82 128, 98 120" 
+          fill="none" 
+          stroke="#0C0E12" 
+          stroke-width="8" 
+          stroke-linecap="round" />
+  </g>
+</svg>

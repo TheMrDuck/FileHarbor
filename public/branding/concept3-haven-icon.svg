@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="haven-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090D16" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#060911" />
+    </linearGradient>
+
+    <linearGradient id="haven-f-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+
+    <linearGradient id="haven-h-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+
+    <linearGradient id="wave-lagoon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="50%" stop-color="#14B8A6" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+
+    <linearGradient id="haven-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Slate Squircle Background -->
+  <rect width="256" height="256" rx="56" fill="url(#haven-bg)" />
+  <rect width="254" height="254" x="1" y="1" rx="55" fill="none" stroke="#1E293B" stroke-width="2" />
+
+  <!-- Ambient Haven Glow -->
+  <circle cx="128" cy="128" r="80" fill="url(#haven-glow)" />
+
+  <!-- Modern Geometric Monogram: F & H as Harbor Piers -->
+  <g transform="translate(48, 48)">
+    <!-- Left Pier (Stem of F and left pillar of H) -->
+    <path d="M12 16 L36 16 L36 144 L12 144 Z" fill="url(#haven-f-grad)" rx="6" />
+
+    <!-- Top Breakwater Dock (Upper bar of F) -->
+    <path d="M36 16 L116 16 C124 16 130 22 130 30 L130 40 L36 40 Z" fill="url(#haven-f-grad)" />
+
+    <!-- Middle Sheltering Pier (Crossbar of F & H) -->
+    <path d="M36 68 L104 68 C110 68 114 72 114 78 L114 88 L36 88 Z" fill="url(#haven-h-grad)" />
+
+    <!-- Right Breakwater Pillar (Right upright of H) -->
+    <path d="M124 68 L148 68 L148 144 L124 144 Z" fill="url(#haven-h-grad)" rx="6" />
+
+    <!-- Protected Inner Lagoon Water Wave (Nesting within the harbor bay) -->
+    <path d="M44 116 C 64 104, 82 128, 104 118 C 114 113, 118 114, 122 116" 
+          fill="none" 
+          stroke="url(#wave-lagoon)" 
+          stroke-width="9" 
+          stroke-linecap="round" />
+
+    <path d="M52 134 C 70 126, 88 142, 108 135" 
+          fill="none" 
+          stroke="url(#wave-lagoon)" 
+          stroke-width="5" 
+          stroke-linecap="round" 
+          opacity="0.6" />
+
+    <!-- Data Beacon Node (Anchored in the haven) -->
+    <circle cx="136" cy="40" r="7" fill="#F8FAFC" />
+    <circle cx="136" cy="40" r="14" fill="#38BDF8" opacity="0.4" />
+  </g>
+</svg>

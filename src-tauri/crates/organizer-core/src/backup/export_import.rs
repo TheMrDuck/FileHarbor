@@ -19,7 +19,7 @@ pub fn export_backup_set(
     output_path: &Path,
 ) -> Result<ExportResult, BackupError> {
     let backup_set = get_backup_set(store, backup_set_id)?
-        .ok_or_else(|| BackupError::SetNotFound(backup_set_id))?;
+        .ok_or(BackupError::SetNotFound(backup_set_id))?;
 
     let runs = get_backup_runs(store, backup_set_id, 1000)?;
     let snapshots = get_backup_snapshots(store, backup_set_id)?;

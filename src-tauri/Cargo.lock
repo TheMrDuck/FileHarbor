@@ -1011,14 +1011,16 @@ dependencies = [
 
 [[package]]
 name = "file-organizer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "organizer-core",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "test-data-generator",
 ]
 
 [[package]]
@@ -2431,12 +2433,16 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "organizer-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "rayon",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 1.0.69",
+ "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="shield-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#061220" />
+      <stop offset="50%" stop-color="#0B1E34" />
+      <stop offset="100%" stop-color="#050C17" />
+    </linearGradient>
+
+    <linearGradient id="shield-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0EA5E9" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+
+    <linearGradient id="anchor-metal" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="50%" stop-color="#E2E8F0" />
+      <stop offset="100%" stop-color="#94A3B8" />
+    </linearGradient>
+
+    <linearGradient id="data-plate-1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+    <linearGradient id="data-plate-2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#0891B2" />
+    </linearGradient>
+    <linearGradient id="data-plate-3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+
+  <!-- App Icon Squircle Background -->
+  <rect width="256" height="256" rx="56" fill="url(#shield-bg)" />
+  <rect width="254" height="254" x="1" y="1" rx="55" fill="none" stroke="#1E3A5F" stroke-width="2" opacity="0.5" />
+
+  <!-- Outer Cryptographic Shield Silhouette -->
+  <path d="M128 36 L198 62 C198 142 128 206 128 220 C128 206 58 142 58 62 Z" 
+        fill="#0B1A2E" 
+        stroke="url(#shield-glow)" 
+        stroke-width="3.5" 
+        stroke-linejoin="round" />
+
+  <!-- Shield Inner Ambient Depth -->
+  <path d="M128 48 L186 70 C186 136 128 190 128 202 C128 190 70 136 70 70 Z" 
+        fill="#081423" 
+        opacity="0.8" />
+
+  <!-- Three Floating Verified Data Slabs (Layers of File Storage) -->
+  <!-- Top Plate -->
+  <path d="M96 112 L160 112 L150 122 L106 122 Z" fill="url(#data-plate-1)" opacity="0.9" />
+  <!-- Mid Plate -->
+  <path d="M92 128 L164 128 L154 138 L102 138 Z" fill="url(#data-plate-2)" opacity="0.9" />
+  <!-- Lower Plate -->
+  <path d="M88 144 L168 144 L158 154 L98 154 Z" fill="url(#data-plate-3)" opacity="0.9" />
+
+  <!-- Anchor Top Shackle / Ring -->
+  <circle cx="128" cy="74" r="13" fill="none" stroke="url(#anchor-metal)" stroke-width="4.5" />
+  <circle cx="128" cy="74" r="5" fill="#081423" />
+
+  <!-- Anchor Stock (Horizontal Crossbar) -->
+  <rect x="94" y="93" width="68" height="6" rx="3" fill="url(#anchor-metal)" />
+  <circle cx="94" cy="96" r="4.5" fill="#38BDF8" />
+  <circle cx="162" cy="96" r="4.5" fill="#38BDF8" />
+
+  <!-- Anchor Center Shank (Vertical Column passing through plates) -->
+  <rect x="124.5" y="87" width="7" height="90" rx="3.5" fill="url(#anchor-metal)" />
+
+  <!-- Anchor Flukes & Crown (The Sweeping Protective Base) -->
+  <path d="M72 132 C72 184 128 194 128 194 C128 194 184 184 184 132" 
+        fill="none" 
+        stroke="url(#anchor-metal)" 
+        stroke-width="6.5" 
+        stroke-linecap="round" />
+
+  <!-- Anchor Palm Tips / Fluke Arrows -->
+  <polygon points="64,132 80,132 72,118" fill="url(#anchor-metal)" />
+  <polygon points="176,132 192,132 184,118" fill="url(#anchor-metal)" />
+
+  <!-- Glowing Center Pivot / Heartbeat Node -->
+  <circle cx="128" cy="190" r="4" fill="#10B981" />
+</svg>

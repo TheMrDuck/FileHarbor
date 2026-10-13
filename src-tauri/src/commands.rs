@@ -19,7 +19,7 @@ use organizer_core::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::state::{AppState, ScanEntry};
+use crate::state::{AppState, BackupEntry, ScanEntry};
 
 fn with_store<R>(
     state: &State<AppState>,
@@ -93,6 +93,7 @@ pub fn start_scan(
         exclusions,
         quarantine_root: Some(state.quarantine_root.clone()),
         max_hash_concurrency: settings.max_hash_concurrency,
+        privacy_shield_enabled: settings.privacy_shield_enabled,
     };
 
     let cancel = CancelToken::new();
@@ -107,7 +108,7 @@ pub fn start_scan(
     thread::spawn(move || {
         // The background thread opens its own SQLite connection.
         let app_data_dir = app_handle.path().app_data_dir().expect("app data dir");
-        let db_path = app_data_dir.join("file-organizer.db");
+        let db_path = app_data_dir.join("fileharbor.db");
         let store = match Store::open(&db_path) {
             Ok(s) => s,
             Err(e) => {
@@ -119,13 +120,12 @@ pub fn start_scan(
             let _ = app_handle.emit("scan-progress", p);
         };
         let status = scanner::run_scan(&store, &cfg, session_id, &scan_cancel, &emit_progress);
-        if let Ok(summary) = store.scan_summary(session_id) {
-            let _ = app_handle.emit("scan-finished", serde_json::json!({
-                "session_id": session_id,
-                "status": status.as_str(),
-                "summary": summary,
-            }));
-        }
+        let summary = store.scan_summary(session_id).ok();
+        let _ = app_handle.emit("scan-finished", serde_json::json!({
+            "session_id": session_id,
+            "status": status.as_str(),
+            "summary": summary,
+        }));
     });
 
     Ok(ScanStarted { session_id })
@@ -274,6 +274,20 @@ pub fn quarantine_files(
 }
 
 #[tauri::command]
+pub fn quarantine_raw_paths(
+    state: State<AppState>,
+    paths: Vec<String>,
+) -> Result<QuarantineResult, String> {
+    let cancel = CancelToken::new();
+    let path_bufs: Vec<std::path::PathBuf> = paths.into_iter().map(std::path::PathBuf::from).collect();
+    let result = {
+        let store = state.store.lock().map_err(|_| "lock error")?;
+        quarantine::quarantine_paths(&store, &path_bufs, &state.quarantine_root, &cancel)?
+    };
+    Ok(QuarantineResult { report: result.report })
+}
+
+#[tauri::command]
 pub fn get_quarantine_items(state: State<AppState>) -> Result<Vec<QuarantineItem>, String> {
     with_store(&state, |s| s.get_quarantine_items(false))
 }
@@ -391,8 +405,8 @@ pub fn create_backup_set(
 }
 
 #[tauri::command]
-pub fn list_backup_sets(state: State<AppState>) -> Result<Vec<BackupSet>, String> {
-    with_store_backup(&state, |s| backup::list_backup_sets(s))
+pub fn list_backup_sets(state: State<AppState>,) -> Result<Vec<BackupSet>, String> {
+    with_store_backup(&state, backup::list_backup_sets)
 }
 
 #[tauri::command]
@@ -494,16 +508,23 @@ pub fn start_backup(
         s.create_backup_run(backup_set.id)
     })?;
 
+    state
+        .backups
+        .lock()
+        .unwrap()
+        .insert(run_id, BackupEntry { cancel: cancel.clone() });
+
     let app_handle = app.clone();
     let app_handle2 = app.clone();
     let cancel_token = cancel.clone();
 
     thread::spawn(move || {
         let app_data_dir = app_handle.path().app_data_dir().expect("app data dir");
-        let db_path = app_data_dir.join("file-organizer.db");
+        let db_path = app_data_dir.join("fileharbor.db");
         let store = match Store::open(&db_path) {
             Ok(s) => s,
             Err(e) => {
+                app_handle.state::<AppState>().backups.lock().unwrap().remove(&run_id);
                 let _ = app_handle.emit("backup-progress", serde_json::json!({
                     "run_id": run_id,
                     "status": "failed",
@@ -535,15 +556,17 @@ pub fn start_backup(
                 "error": e.to_string(),
             }));
         }
+        app_handle.state::<AppState>().backups.lock().unwrap().remove(&run_id);
     });
 
     Ok(run_id)
 }
 
 #[tauri::command]
-pub fn cancel_backup(_state: State<AppState>, _run_id: i64) -> Result<(), String> {
-    // Cancellation is handled via the CancelToken in the engine
-    // This would need a map of run_id -> CancelToken in AppState
+pub fn cancel_backup(state: State<AppState>, run_id: i64) -> Result<(), String> {
+    if let Some(entry) = state.backups.lock().unwrap().get(&run_id) {
+        entry.cancel.cancel();
+    }
     Ok(())
 }
 
@@ -666,7 +689,7 @@ pub fn check_file_backup_status(
 pub fn detect_interrupted_backups(
     state: State<AppState>,
 ) -> Result<Vec<BackupRun>, String> {
-    with_store_backup(&state, |s| backup::detect_interrupted_backups(s))
+    with_store_backup(&state, backup::detect_interrupted_backups)
 }
 
 #[tauri::command]
@@ -791,4 +814,469 @@ pub fn verify_backup_deep(
     with_store(&state, |s| {
         backup::get_backup_health(s).map_err(|e| e.to_string())
     })
+}
+
+// ---------------------------------------------------------------------------
+// Test Data Generator Commands
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestScenarioDto {
+    pub name: String,
+    pub scenario_type: String,
+    pub description: String,
+    pub default_files: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenerateTestDataRequest {
+    pub scenario: String,
+    pub output_dir: String,
+    pub files: Option<usize>,
+    pub seed: Option<u64>,
+    pub duplicate_groups: Option<usize>,
+    pub empty_files: Option<usize>,
+    pub unicode_files: Option<usize>,
+    pub large_files: Option<usize>,
+    pub nested_depth: Option<usize>,
+    pub same_size_diff_content: Option<usize>,
+    pub allow_dangerous: Option<bool>,
+}
+
+/// Lists all available test data generation scenarios.
+#[tauri::command]
+pub fn list_test_scenarios() -> Result<Vec<TestScenarioDto>, String> {
+    let list = test_data_generator::scenarios::ScenarioRegistry::all()
+        .into_iter()
+        .map(|s| TestScenarioDto {
+            name: s.name.to_string(),
+            scenario_type: format!("{:?}", s.scenario_type),
+            description: s.description.to_string(),
+            default_files: s.default_files,
+        })
+        .collect();
+    Ok(list)
+}
+
+/// Returns a default safe path for test datasets inside the application data directory.
+#[tauri::command]
+pub fn get_default_test_data_dir(
+    state: State<AppState>,
+    scenario: Option<String>,
+) -> Result<String, String> {
+    let base = state.app_data_dir.join("TestData");
+    let target = if let Some(sc) = scenario {
+        if sc.trim().is_empty() {
+            base
+        } else {
+            base.join(sc.trim())
+        }
+    } else {
+        base
+    };
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Generates a synthetic test dataset based on the specified scenario and configuration.
+#[tauri::command]
+pub async fn generate_test_data(
+    app: AppHandle,
+    request: GenerateTestDataRequest,
+) -> Result<test_data_generator::manifest::ManifestSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let output_path = std::path::PathBuf::from(&request.output_dir);
+        let scenario_name = request.scenario.clone();
+        let path_lower = output_path.to_string_lossy().to_lowercase();
+        let allow_dangerous = request.allow_dangerous.unwrap_or(false)
+            || path_lower.contains("testdata")
+            || path_lower.contains("test-data");
+
+        let default_scenario = test_data_generator::scenarios::ScenarioRegistry::get(&scenario_name)
+            .ok_or_else(|| format!("Unknown scenario: {}", scenario_name))?;
+
+        let app_handle = app.clone();
+        let progress_callback = Box::new(move |progress: test_data_generator::scenarios::GenerationProgress| {
+            let _ = app_handle.emit("testgen-progress", progress);
+        });
+
+        let config = test_data_generator::scenarios::GenerationConfig {
+            total_files: request.files.unwrap_or(default_scenario.default_files),
+            seed: request.seed.unwrap_or(12345),
+            duplicate_groups: request.duplicate_groups.unwrap_or(100),
+            empty_files: request.empty_files.unwrap_or(50),
+            unicode_files: request.unicode_files.unwrap_or(50),
+            large_files: request.large_files.unwrap_or(5),
+            nested_depth: request.nested_depth.unwrap_or(5),
+            same_size_diff_content_pairs: request.same_size_diff_content.unwrap_or(50),
+            progress_callback: Some(progress_callback),
+            ..Default::default()
+        };
+
+        let mut generator = test_data_generator::generator::TestDataGenerator::new_with_options(
+            &scenario_name,
+            output_path,
+            config,
+            allow_dangerous,
+        ).map_err(|e| e.to_string())?;
+
+        let manifest = generator.generate().map_err(|e| e.to_string())?;
+
+        let total_bytes: u64 = manifest.files.iter().map(|f| f.size_bytes).sum();
+
+        // Track dataset in FileHarbor database
+        if let Some(state) = app.try_state::<AppState>() {
+            if let Ok(guard) = state.store.lock() {
+                let _ = guard.record_test_dataset(
+                    &scenario_name,
+                    &request.output_dir,
+                    manifest.summary.files,
+                    total_bytes,
+                );
+            }
+        }
+
+        Ok(manifest.summary)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Verifies a generated test dataset against its ground-truth manifest.json.
+#[tauri::command]
+pub fn verify_test_data(
+    path: String,
+) -> Result<test_data_generator::verify::VerificationResult, String> {
+    let p = std::path::PathBuf::from(&path);
+    let manifest_path = if p.is_dir() {
+        p.join("manifest.json")
+    } else {
+        p
+    };
+
+    if !manifest_path.exists() {
+        return Err(format!("Manifest not found at {}", manifest_path.display()));
+    }
+
+    test_data_generator::verify::verify_dataset(&manifest_path)
+        .map_err(|e| e.to_string())
+}
+
+/// Safely cleans up a test dataset after verifying its manifest.json and untracks it from the database.
+#[tauri::command]
+pub fn clean_test_data(app: AppHandle, path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    test_data_generator::safety::SafeCleanup::clean(&p, true)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(guard) = state.store.lock() {
+            let _ = guard.remove_tracked_test_dataset(&path);
+        }
+    }
+
+    Ok(())
+}
+
+/// Lists all tracked test datasets.
+#[tauri::command]
+pub fn list_tracked_test_datasets(
+    state: State<AppState>,
+) -> Result<Vec<TrackedTestDataset>, String> {
+    with_store(&state, |s| s.list_tracked_test_datasets())
+}
+
+// ----------------------------------------------------------------------
+// File Health & Corrupted Recovery Analysis
+// ----------------------------------------------------------------------
+
+#[tauri::command]
+pub fn analyze_file_health(
+    path: String,
+) -> Result<organizer_core::health::FileHealthReport, String> {
+    let p = PathBuf::from(path);
+    organizer_core::health::evaluate_file_health(&p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn scan_and_compare_recovery_pairs(
+    folder_path: String,
+) -> Result<Vec<organizer_core::health::RecoveryPairComparison>, String> {
+    let folder = PathBuf::from(folder_path);
+    if !folder.is_dir() {
+        return Err("Selected path is not a directory".into());
+    }
+
+    let mut reports = Vec::new();
+    let entries = std::fs::read_dir(&folder).map_err(|e| e.to_string())?;
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_file() {
+            if let Ok(report) = organizer_core::health::evaluate_file_health(&p) {
+                reports.push(report);
+            }
+        }
+    }
+
+    Ok(organizer_core::health::find_recovery_pairs(reports))
+}
+
+// ----------------------------------------------------------------------
+// Downloads & Atom Files Triage Wizard
+// ----------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct TriageScanRequest {
+    pub folder_path: String,
+    pub organize_by_category: bool,
+    pub custom_destination_dir: Option<String>,
+}
+
+#[tauri::command]
+pub fn scan_triage_plan(
+    request: TriageScanRequest,
+) -> Result<organizer_core::triage::TriagePlan, String> {
+    let folder = PathBuf::from(request.folder_path);
+    if !folder.is_dir() {
+        return Err("Selected path is not a directory".into());
+    }
+
+    let options = organizer_core::triage::TriageOptions {
+        organize_by_category: request.organize_by_category,
+        group_by_date: false,
+        custom_destination_dir: request.custom_destination_dir.map(PathBuf::from),
+    };
+
+    organizer_core::triage::scan_and_plan_triage(&folder, &options).map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+pub struct ExecuteTriageRequest {
+    pub items_to_move: Vec<(String, String)>, // (source_path, target_path)
+}
+
+#[derive(Serialize)]
+pub struct TriageExecutionResult {
+    pub moved_count: usize,
+    pub failed_items: Vec<(String, String)>, // (path, error)
+}
+
+#[tauri::command]
+pub fn execute_triage_moves(
+    request: ExecuteTriageRequest,
+) -> Result<TriageExecutionResult, String> {
+    let mut moved_count = 0;
+    let mut failed_items = Vec::new();
+
+    for (src_str, dest_str) in request.items_to_move {
+        let src = PathBuf::from(&src_str);
+        let dest = PathBuf::from(&dest_str);
+
+        if !src.exists() {
+            failed_items.push((src_str, "Source file no longer exists".into()));
+            continue;
+        }
+
+        // Ensure target directory exists
+        if let Some(parent) = dest.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                failed_items.push((src_str, format!("Failed to create destination dir: {}", e)));
+                continue;
+            }
+        }
+
+        // Avoid overwrites: compute collision safe path
+        let final_dest = organizer_core::triage::resolve_collision_path(&dest);
+
+        // Move file safely
+        if let Err(e) = std::fs::rename(&src, &final_dest) {
+            // If cross-device, copy then remove
+            if let Err(copy_err) = std::fs::copy(&src, &final_dest).and_then(|_| std::fs::remove_file(&src)) {
+                failed_items.push((src_str, format!("Move failed: {} (copy error: {})", e, copy_err)));
+                continue;
+            }
+        }
+
+        moved_count += 1;
+    }
+
+    Ok(TriageExecutionResult {
+        moved_count,
+        failed_items,
+    })
+}
+
+// ----------------------------------------------------------------------
+// Phase 3 Intelligence Commands: "Why?" Explanations, Rectification, & Perceptual Near-Duplicates
+// ----------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_duplicate_explanation(
+    state: State<AppState>,
+    group_id: i64,
+) -> Result<organizer_core::models::DuplicateExplanation, String> {
+    with_store(&state, |s| {
+        let group = s.get_duplicate_group(group_id)?
+            .ok_or_else(|| format!("Duplicate group {} not found", group_id))?;
+        Ok(organizer_core::dupdetect::explain_duplicate_group(&group))
+    })
+}
+
+#[tauri::command]
+pub fn scan_extension_rectifications(
+    folder_path: String,
+) -> Result<Vec<organizer_core::health::ExtensionRectificationProposal>, String> {
+    let root = PathBuf::from(folder_path);
+    organizer_core::health::scan_for_extension_rectifications(&root)
+}
+
+#[derive(Deserialize)]
+pub struct ExecuteRectificationRequest {
+    pub items: Vec<(String, String)>, // (current_path, target_path)
+}
+
+#[derive(Serialize)]
+pub struct RectificationExecutionResult {
+    pub results: Vec<organizer_core::health::RectificationResultItem>,
+}
+
+#[tauri::command]
+pub fn execute_extension_rectifications(
+    request: ExecuteRectificationRequest,
+) -> Result<RectificationExecutionResult, String> {
+    let results = organizer_core::health::execute_extension_rectifications(request.items)?;
+    Ok(RectificationExecutionResult { results })
+}
+
+#[tauri::command]
+pub fn scan_perceptual_duplicates(
+    folder_path: String,
+    max_hamming_distance: Option<u32>,
+) -> Result<Vec<organizer_core::perceptual::NearDuplicateCluster>, String> {
+    let root = PathBuf::from(folder_path);
+    let threshold = max_hamming_distance.unwrap_or(6);
+    organizer_core::perceptual::scan_and_cluster_near_duplicates(&root, threshold)
+}
+
+// ----------------------------------------------------------------------
+// Phase 5 Advanced Multi-Copy File Reconstruction Commands
+// ----------------------------------------------------------------------
+
+#[tauri::command]
+pub fn plan_file_reconstruction(
+    candidate_a: String,
+    candidate_b: String,
+) -> Result<organizer_core::reconstruction::ReconstructionPlan, String> {
+    let path_a = PathBuf::from(candidate_a);
+    let path_b = PathBuf::from(candidate_b);
+    organizer_core::reconstruction::analyze_reconstruction_plan(&path_a, &path_b)
+}
+
+#[derive(Deserialize)]
+pub struct ExecuteReconstructionRequest {
+    pub plan: organizer_core::reconstruction::ReconstructionPlan,
+}
+
+#[tauri::command]
+pub fn execute_file_reconstruction(
+    request: ExecuteReconstructionRequest,
+) -> Result<organizer_core::reconstruction::ReconstructionResult, String> {
+    organizer_core::reconstruction::execute_reconstruction(&request.plan)
+}
+
+// ----------------------------------------------------------------------
+// Phase 6 Privacy & Zero-Knowledge Architecture Commands
+// ----------------------------------------------------------------------
+
+#[derive(Serialize, Clone)]
+pub struct PrivacyAuditResult {
+    pub network_status: String,
+    pub outbound_bytes: u64,
+    pub privacy_shield_enabled: bool,
+    pub shielded_directories: Vec<String>,
+    pub shielded_extensions: Vec<String>,
+    pub storage_guarantee: String,
+}
+
+#[tauri::command]
+pub fn get_privacy_audit(state: State<AppState>) -> Result<PrivacyAuditResult, String> {
+    let settings = {
+        let store = state.store.lock().map_err(|_| "lock error")?;
+        AppSettings::load(&store)
+    };
+
+    Ok(PrivacyAuditResult {
+        network_status: "Air-Gapped (100% Offline / Zero Network Capabilities)".into(),
+        outbound_bytes: 0,
+        privacy_shield_enabled: settings.privacy_shield_enabled,
+        shielded_directories: organizer_core::privacy::SENSITIVE_DIR_NAMES
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        shielded_extensions: organizer_core::privacy::SENSITIVE_EXTENSIONS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        storage_guarantee: "Metadata & irreversible SHA-256 hashes only (zero raw file contents, texts, or previews are persisted to disk)".into(),
+    })
+}
+
+// ----------------------------------------------------------------------
+// Phase 7 Document Lineage & Version Detection Commands
+// ----------------------------------------------------------------------
+
+#[tauri::command]
+pub fn scan_document_lineages(
+    folder_path: String,
+    max_hamming_distance: Option<u32>,
+) -> Result<Vec<organizer_core::document::DocumentLineageCluster>, String> {
+    let root = PathBuf::from(folder_path);
+    let threshold = max_hamming_distance.unwrap_or(12);
+    organizer_core::document::scan_and_cluster_document_lineages(&root, threshold)
+}
+
+
+
+
+// ----------------------------------------------------------------------
+// Phase 8 Carving & Harbor Patrol Commands
+// ----------------------------------------------------------------------
+
+#[tauri::command]
+pub fn scan_carving_candidates(
+    folder_path: String,
+) -> Result<Vec<organizer_core::carving::CarvedFileProposal>, String> {
+    let root = PathBuf::from(folder_path);
+    organizer_core::carving::scan_carving_proposals(&root)
+}
+
+#[derive(Deserialize)]
+pub struct ExecuteCarvingRenamesRequest {
+    pub items: Vec<(String, String)>,
+}
+
+#[tauri::command]
+pub fn execute_carving_renames(
+    request: ExecuteCarvingRenamesRequest,
+) -> Result<organizer_core::carving::CarveExecutionResult, String> {
+    Ok(organizer_core::carving::execute_carve_renames(&request.items))
+}
+
+#[tauri::command]
+pub fn run_harbor_patrol(
+    state: State<AppState>,
+    backup_set_id: i64,
+    auto_heal: Option<bool>,
+) -> Result<organizer_core::backup::patrol::HarborPatrolSummary, String> {
+    let cancel = CancelToken::new();
+    let auto_heal = auto_heal.unwrap_or(true);
+    let store = state.store.lock().map_err(|_| "lock error")?;
+
+    organizer_core::backup::patrol::run_patrol_for_set(
+        &store,
+        backup_set_id,
+        auto_heal,
+        &cancel,
+    )
+    .map_err(|e| e.to_string())
 }

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Anti-AI-Slop: Grounded Nordic Matte Slate background, zero neon glows -->
+  <rect width="256" height="256" rx="52" fill="#11141A" />
+  <rect width="254" height="254" x="1" y="1" rx="51" fill="none" stroke="#232732" stroke-width="2" />
+
+  <!-- The Breakwater Haven & File Fold -->
+  <!-- Outer Breakwater Pier Wall: Bold architectural sweep protecting the harbor -->
+  <path d="M 64 88 
+           L 136 88 
+           C 172 88, 192 108, 192 144 
+           C 192 180, 168 196, 128 196 
+           L 64 196 
+           Z" 
+        fill="#1C212B" 
+        stroke="#2E3544" 
+        stroke-width="3" />
+
+  <!-- Sheltered Inner Basin / File Geometry -->
+  <path d="M 88 112 
+           L 136 112 
+           C 156 112, 168 124, 168 144 
+           C 168 164, 154 172, 132 172 
+           L 88 172 
+           Z" 
+        fill="#F3F4F6" />
+
+  <!-- Precision Cut / Negative Space Document Slit -->
+  <line x1="88" y1="138" x2="132" y2="138" stroke="#11141A" stroke-width="6" stroke-linecap="round" />
+  <line x1="88" y1="150" x2="118" y2="150" stroke="#11141A" stroke-width="6" stroke-linecap="round" />
+
+  <!-- The Harbor Lantern Beacon: Authentic Maritime Signal Amber (Warm, physical, zero neon) -->
+  <circle cx="64" cy="88" r="16" fill="#F59E0B" />
+  <circle cx="64" cy="88" r="6" fill="#FFFBEB" />
+
+  <!-- Sturdy Mooring Bollard Base -->
+  <rect x="58" y="190" width="12" height="18" rx="3" fill="#94A3B8" />
+  <rect x="52" y="186" width="24" height="6" rx="2" fill="#CBD5E1" />
+</svg>

@@ -87,7 +87,8 @@ impl Store {
                     hash_algorithm TEXT,
                     hash_status TEXT NOT NULL DEFAULT 'not_computed',
                     scan_status TEXT NOT NULL,
-                    error TEXT
+                    error TEXT,
+                    copy_role TEXT NOT NULL DEFAULT 'working'
                 );
                 CREATE INDEX IF NOT EXISTS idx_files_session ON file_records(session_id);
                 CREATE INDEX IF NOT EXISTS idx_files_session_status ON file_records(session_id, scan_status);
@@ -240,9 +241,28 @@ CREATE TABLE IF NOT EXISTS settings (
                     first_seen_ms INTEGER NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_backup_contents_hash ON backup_contents(sha256);
+
+                CREATE TABLE IF NOT EXISTS tracked_test_datasets (
+                    id INTEGER PRIMARY KEY,
+                    scenario TEXT NOT NULL,
+                    path TEXT NOT NULL UNIQUE,
+                    total_files INTEGER NOT NULL,
+                    total_bytes INTEGER NOT NULL,
+                    created_at_ms INTEGER NOT NULL
+                );
                 "#,
             )
             .map_err(|e| format!("database migration failed: {e}"))?;
+
+        let has_copy_role = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('file_records') WHERE name = 'copy_role'",
+            [],
+            |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if !has_copy_role {
+            let _ = self.conn.execute("ALTER TABLE file_records ADD COLUMN copy_role TEXT NOT NULL DEFAULT 'working'", []);
+        }
+
         Ok(())
     }
 
@@ -305,9 +325,10 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 
     /// Get all file records for a scan session.
     pub fn get_session_files(&self, session_id: i64) -> Result<Vec<FileRecord>, String> {
+        let sql = format!("SELECT {FILE_COLS} FROM file_records f WHERE f.session_id = ?1");
         let mut stmt = self
             .conn
-            .prepare("SELECT {FILE_COLS} FROM file_records WHERE session_id = ?1")
+            .prepare(&sql)
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(params![session_id], map_file)
@@ -363,8 +384,8 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                     "INSERT INTO file_records
                      (session_id, path, file_name, extension, size_bytes,
                       created_at_ms, modified_at_ms, accessed_at_ms,
-                      is_empty, hash_status, scan_status, error)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'not_computed',?10,?11)",
+                      is_empty, hash_status, scan_status, error, copy_role)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'not_computed',?10,?11,?12)",
                 )
                 .map_err(|e| e.to_string())?;
             for r in records {
@@ -380,6 +401,7 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                     r.is_empty as i64,
                     r.scan_status.as_str(),
                     r.error,
+                    r.copy_role.as_str(),
                 ])
                 .map_err(|e| e.to_string())?;
             }
@@ -676,6 +698,41 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
         }
         Ok((groups, total))
     }
+
+    pub fn get_duplicate_group(&self, group_id: i64) -> Result<Option<DuplicateGroup>, String> {
+        let res: Result<(i64, String, i64, i64), _> = self.conn.query_row(
+            "SELECT session_id, hash, size_bytes, recommended_keep_file_id FROM duplicate_groups WHERE id = ?1",
+            params![group_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        );
+
+        let (session_id, hash, size, keep) = match res {
+            Ok(v) => v,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let mut mstmt = self.conn.prepare(&format!(
+            "SELECT {FILE_COLS} FROM file_records f
+             JOIN duplicate_members m ON m.file_id = f.id
+             WHERE m.group_id = ?1 ORDER BY f.path"
+        )).map_err(|e| e.to_string())?;
+
+        let members = mstmt.query_map(params![group_id], map_file)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        Ok(Some(DuplicateGroup {
+            id: group_id,
+            session_id,
+            hash,
+            size_bytes: size as u64,
+            members,
+            recommended_keep_file_id: keep,
+        }))
+    }
+
 
     // ------------------------------------------------------------------
     // Hash cache
@@ -1035,6 +1092,94 @@ Ok(ScanSummary {
             .map_err(|e| BackupError::DatabaseError(e.to_string()))?;
         Ok(self.conn.last_insert_rowid())
     }
+
+    pub fn get_all_backup_destination_paths(&self) -> Vec<String> {
+        let mut stmt = match self.conn.prepare("SELECT path FROM backup_destinations") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let rows = match stmt.query_map([], |r| r.get::<_, String>(0)) {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        rows.filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn is_backup_destination(&self, path: &str) -> bool {
+        let p = std::path::Path::new(path);
+        if p.join(".fileharbor").exists() || p.join(".fileharbor-partial").exists() {
+            return true;
+        }
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM backup_destinations WHERE path = ?1",
+            params![path],
+            |r| r.get(0),
+        ).unwrap_or(0);
+        count > 0
+    }
+
+    pub fn record_test_dataset(
+        &self,
+        scenario: &str,
+        path: &str,
+        total_files: usize,
+        total_bytes: u64,
+    ) -> Result<i64, String> {
+        let now = now_ms();
+        self.conn
+            .execute(
+                "INSERT INTO tracked_test_datasets (scenario, path, total_files, total_bytes, created_at_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(path) DO UPDATE SET
+                    scenario = excluded.scenario,
+                    total_files = excluded.total_files,
+                    total_bytes = excluded.total_bytes,
+                    created_at_ms = excluded.created_at_ms",
+                params![scenario, path, total_files as i64, total_bytes as i64, now],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn list_tracked_test_datasets(&self) -> Result<Vec<TrackedTestDataset>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, scenario, path, total_files, total_bytes, created_at_ms FROM tracked_test_datasets ORDER BY created_at_ms DESC")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(TrackedTestDataset {
+                    id: r.get(0)?,
+                    scenario: r.get(1)?,
+                    path: r.get(2)?,
+                    total_files: r.get::<_, i64>(3)? as usize,
+                    total_bytes: r.get::<_, i64>(4)? as u64,
+                    created_at_ms: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut res = Vec::new();
+        for item in rows.flatten() {
+            res.push(item);
+        }
+        Ok(res)
+    }
+
+    pub fn remove_tracked_test_dataset(&self, path: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM tracked_test_datasets WHERE path = ?1", params![path])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn has_verified_backup(&self, sha256: &str) -> bool {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM backup_files WHERE sha256 = ?1 AND status = 'verified'",
+            params![sha256],
+            |r| r.get(0),
+        ).unwrap_or(0);
+        count > 0
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -1044,7 +1189,7 @@ Ok(ScanSummary {
 pub const FILE_COLS: &str =
     "f.id, f.session_id, f.path, f.file_name, f.extension, f.size_bytes, \
      f.created_at_ms, f.modified_at_ms, f.accessed_at_ms, f.is_empty, \
-     f.hash, f.hash_algorithm, f.hash_status, f.scan_status, f.error";
+     f.hash, f.hash_algorithm, f.hash_status, f.scan_status, f.error, f.copy_role";
 
 pub fn map_file(row: &Row) -> Result<FileRecord, rusqlite::Error> {
     Ok(FileRecord {
@@ -1063,6 +1208,9 @@ pub fn map_file(row: &Row) -> Result<FileRecord, rusqlite::Error> {
         hash_status: HashStatus::parse(&row.get::<_, String>(12)?),
         scan_status: ScanStatus::parse(&row.get::<_, String>(13)?),
         error: row.get(14)?,
+        copy_role: row.get::<_, Option<String>>(15)?
+            .map(|s| CopyRole::parse(&s))
+            .unwrap_or(CopyRole::Working),
     })
 }
 
