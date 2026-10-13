@@ -1,6 +1,6 @@
 # FileHarbor
 
-[![Latest Release](https://img.shields.io/github/v/release/TheMrDuck/FileHarbor?color=brightgreen&label=latest%20release)](https://github.com/TheMrDuck/FileHarbor/releases/latest)
+[![Latest Release](https://img.shields.io/badge/release-v0.2.0-brightgreen.svg)](https://github.com/TheMrDuck/FileHarbor/releases/latest)
 [![Download Windows EXE](https://img.shields.io/badge/Windows-Download%20.exe-blue?logo=windows)](https://github.com/TheMrDuck/FileHarbor/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
