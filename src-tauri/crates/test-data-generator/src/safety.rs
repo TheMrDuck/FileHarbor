@@ -115,8 +115,7 @@ impl AtomicManifestWriter {
         // Atomic rename
         #[cfg(unix)]
         {
-            use std::os::unix::fs::rename;
-            rename(&temp_path, path)?;
+            std::fs::rename(&temp_path, path)?;
         }
         
         #[cfg(windows)]

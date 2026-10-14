@@ -3,6 +3,7 @@
 //! Avoids binding backup identity solely to drive letters (C:, D:, E:).
 //! Uses destination identity + filesystem path instead.
 
+#[allow(unused_imports)]
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 

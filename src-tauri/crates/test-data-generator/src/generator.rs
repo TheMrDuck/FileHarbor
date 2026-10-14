@@ -46,7 +46,8 @@ impl TestDataGenerator {
     }
 
     /// Check available disk space
-    fn check_disk_space(_output_dir: &Path, file_count: usize) -> Result<()> {
+    #[allow(unused_variables)]
+    fn check_disk_space(output_dir: &Path, file_count: usize) -> Result<()> {
         // Estimate: average 50KB per file + overhead
         let estimated_bytes = (file_count as u64) * 50_000;
         let _estimated_gb = estimated_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
