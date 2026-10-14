@@ -42,3 +42,7 @@ desktop.ini
 .env
 .env.local
 .env.*.local
+
+# Video & launch assets
+brag-output/
+
