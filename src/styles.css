@@ -1999,3 +1999,51 @@ tbody tr:hover {
 .row-high-risk {
   background: rgba(239, 68, 68, 0.03);
 }
+
+.btn-file-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-bright);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.btn-file-open-link:hover {
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.12);
+  text-decoration: underline;
+}
+
+.file-open-icon {
+  font-size: 11px;
+  opacity: 0.65;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-file-open-link:hover .file-open-icon {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+
+.file-open-name {
+  word-break: break-all;
+}
+
+.dup-path-subtle {
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

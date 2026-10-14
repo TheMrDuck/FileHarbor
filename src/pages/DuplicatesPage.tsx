@@ -287,7 +287,18 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
                           </td>
                           <td className="mono truncated" title={m.path}>
                             <div className="dup-path-cell">
-                              <span className="dup-path-text">{m.path}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  className="btn-file-open-link"
+                                  title="Click to open file in system default viewer"
+                                  onClick={() => api.openFile(m.path)}
+                                >
+                                  <span className="file-open-icon">↗️</span>
+                                  <span className="file-open-name">{m.file_name}</span>
+                                </button>
+                                <span className="dup-path-text">{m.path}</span>
+                              </div>
                               <div className="dup-path-tags">
                                 {m.project_context && (
                                   <span className="badge badge-project" title={`Project Root: ${m.project_context}`}>
@@ -300,6 +311,22 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
                                     🔒 Git Internal
                                   </span>
                                 )}
+                                <button
+                                  type="button"
+                                  className="btn-link-action"
+                                  title="Open file in default system viewer"
+                                  onClick={() => api.openFile(m.path)}
+                                >
+                                  ↗️ Open
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-link-action"
+                                  title="Reveal file in File Explorer"
+                                  onClick={() => api.showInFolder(m.path)}
+                                >
+                                  📁 Reveal
+                                </button>
                                 <button
                                   type="button"
                                   className="btn-link-action"

@@ -138,7 +138,25 @@ pub fn classify_empty_file(path_str: &str, file_name: &str) -> EmptyFileAnalysis
         };
     }
 
-    // 5. Low Risk Junk checks
+    // 5. 0-Byte Corrupted Media files (aborted screenshots, interrupted video saves, empty audio stubs)
+    const MEDIA_EXTS: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg",
+        "mp4", "mov", "avi", "mkv", "wmv", "mp3", "wav", "flac", "ogg"
+    ];
+    if MEDIA_EXTS.contains(&ext.as_str()) {
+        let is_photo = matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "svg");
+        return EmptyFileAnalysis {
+            risk: EmptyFileRisk::Low,
+            badge_label: if is_photo { "0-Byte Corrupt Photo".to_string() } else { "0-Byte Corrupt Media".to_string() },
+            reason: format!(
+                "Aborted screenshot or interrupted save. A valid {} file requires binary headers and image data; this file has 0 bytes (no image data) and cannot be opened.",
+                ext.to_uppercase()
+            ),
+            category: "corrupt_media".to_string(),
+        };
+    }
+
+    // 6. Low Risk Junk checks
     let is_junk_name = name_lower.starts_with("new text document")
         || name_lower.starts_with("new document")
         || name_lower.starts_with("untitled")
@@ -203,5 +221,13 @@ mod tests {
         let analysis = classify_empty_file("C:\\Users\\user\\Desktop\\New Text Document.txt", "New Text Document.txt");
         assert_eq!(analysis.risk, EmptyFileRisk::Low);
         assert_eq!(analysis.badge_label, "Safe Junk");
+    }
+
+    #[test]
+    fn test_empty_screenshot_is_corrupt_photo() {
+        let analysis = classify_empty_file("D:\\Backup\\Screenshots\\Screenshot 2026-04-12 042846.png", "Screenshot 2026-04-12 042846.png");
+        assert_eq!(analysis.risk, EmptyFileRisk::Low);
+        assert_eq!(analysis.badge_label, "0-Byte Corrupt Photo");
+        assert_eq!(analysis.category, "corrupt_media");
     }
 }

@@ -24,6 +24,18 @@ export default function EmptyFilesPage({ sessionId, showToast }: Props) {
     : items;
   const hiddenCount = items.filter((f) => f.empty_risk === 'high').length;
 
+  const handleOpenFile = async (filePath: string, isMediaStub?: boolean) => {
+    try {
+      await api.openFile(filePath);
+    } catch (e) {
+      if (isMediaStub) {
+        showToast('Cannot open: file contains 0 bytes (aborted/corrupted screenshot stub).', 'info');
+      } else {
+        showToast(`Failed to open file: ${String(e)}`, 'error');
+      }
+    }
+  };
+
   const ignoreFolder = async (filePath: string) => {
     const sep = filePath.includes('\\') ? '\\' : '/';
     const parts = filePath.split(sep);
@@ -168,7 +180,17 @@ export default function EmptyFilesPage({ sessionId, showToast }: Props) {
                       aria-label={`Select ${f.path}`}
                     />
                   </td>
-                  <td className="mono">{f.file_name}</td>
+                  <td className="mono">
+                    <button
+                      type="button"
+                      className="btn-file-open-link"
+                      title="Click to open file in system default viewer"
+                      onClick={() => handleOpenFile(f.path, f.empty_risk_badge?.includes('Photo') || f.empty_risk_badge?.includes('Media'))}
+                    >
+                      <span className="file-open-icon">↗️</span>
+                      <span className="file-open-name">{f.file_name}</span>
+                    </button>
+                  </td>
                   <td>
                     {f.empty_risk === 'high' ? (
                       <span className="badge badge-risk-high" title={f.empty_risk_reason ?? "Structural file required by application/game"}>
@@ -187,17 +209,35 @@ export default function EmptyFilesPage({ sessionId, showToast }: Props) {
                   <td className="mono truncated" title={f.path}>
                     <div className="dup-path-cell">
                       <span className="dup-path-text">{f.path}</span>
-                      <button
-                        type="button"
-                        className="btn-link-action"
-                        title="Exclude this folder from empty file scan"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          ignoreFolder(f.path);
-                        }}
-                      >
-                        Ignore folder
-                      </button>
+                      <div className="dup-path-tags">
+                        <button
+                          type="button"
+                          className="btn-link-action"
+                          title="Open with default system viewer"
+                          onClick={() => handleOpenFile(f.path, f.empty_risk_badge?.includes('Photo') || f.empty_risk_badge?.includes('Media'))}
+                        >
+                          ↗️ Open
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-link-action"
+                          title="Reveal file in File Explorer"
+                          onClick={() => api.showInFolder(f.path)}
+                        >
+                          📁 Reveal
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-link-action"
+                          title="Exclude this folder from empty file scan"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            ignoreFolder(f.path);
+                          }}
+                        >
+                          Ignore folder
+                        </button>
+                      </div>
                     </div>
                   </td>
                   <td>{formatDate(f.created_at_ms)}</td>

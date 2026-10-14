@@ -73,7 +73,21 @@ export default function ProblemsPage({ sessionId }: Props) {
                       {humanStatus(f.scan_status)}
                     </span>
                   </td>
-                  <td className="mono truncated" title={f.path}>{f.path}</td>
+                  <td className="mono truncated" title={f.path}>
+                    <div className="dup-path-cell">
+                      <span className="dup-path-text">{f.path}</span>
+                      <div className="dup-path-tags">
+                        <button
+                          type="button"
+                          className="btn-link-action"
+                          title="Reveal file in File Explorer"
+                          onClick={() => api.showInFolder(f.path)}
+                        >
+                          📁 Reveal in Explorer
+                        </button>
+                      </div>
+                    </div>
+                  </td>
                   <td>{f.scan_status === "inaccessible" ? "-" : formatBytes(f.size_bytes)}</td>
                   <td>{formatDate(f.modified_at_ms)}</td>
                   <td className="error-cell">{f.error ?? "-"}</td>

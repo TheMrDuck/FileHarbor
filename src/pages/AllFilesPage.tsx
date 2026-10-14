@@ -130,8 +130,40 @@ export default function AllFilesPage({ sessionId }: Props) {
                 const bs = backupStatusMap.get(f.id);
                 return (
                   <tr key={f.id}>
-                    <td className="mono">{f.file_name}</td>
-                    <td className="mono truncated" title={f.path}>{f.path}</td>
+                    <td className="mono">
+                      <button
+                        type="button"
+                        className="btn-file-open-link"
+                        title="Click to open file in system default viewer"
+                        onClick={() => api.openFile(f.path)}
+                      >
+                        <span className="file-open-icon">↗️</span>
+                        <span className="file-open-name">{f.file_name}</span>
+                      </button>
+                    </td>
+                    <td className="mono truncated" title={f.path}>
+                      <div className="dup-path-cell">
+                        <span className="dup-path-text">{f.path}</span>
+                        <div className="dup-path-tags">
+                          <button
+                            type="button"
+                            className="btn-link-action"
+                            title="Open with system default viewer"
+                            onClick={() => api.openFile(f.path)}
+                          >
+                            ↗️ Open
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-link-action"
+                            title="Reveal in File Explorer"
+                            onClick={() => api.showInFolder(f.path)}
+                          >
+                            📁 Reveal
+                          </button>
+                        </div>
+                      </div>
+                    </td>
                     <td>{f.is_empty ? "empty" : formatBytes(f.size_bytes)}</td>
                     <td>{formatDate(f.modified_at_ms)}</td>
                     <td>
