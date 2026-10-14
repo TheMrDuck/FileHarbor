@@ -542,7 +542,15 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                 map_file,
             )
             .map_err(|e| e.to_string())?;
-        let items = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        let mut items = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        if filter.empty_only {
+            for item in &mut items {
+                let analysis = crate::empty_classifier::classify_empty_file(&item.path, &item.file_name);
+                item.empty_risk = Some(analysis.risk.as_str().to_string());
+                item.empty_risk_badge = Some(analysis.badge_label);
+                item.empty_risk_reason = Some(analysis.reason);
+            }
+        }
         Ok(FilePage { items, total })
     }
 
@@ -694,11 +702,30 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                      WHERE m.group_id = ?1 ORDER BY f.path"
                 ))
                 .map_err(|e| e.to_string())?;
-            let members = mstmt
+            let mut members = mstmt
                 .query_map(params![gid], map_file)
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
+
+            for m in &mut members {
+                let path_obj = std::path::Path::new(&m.path);
+                if let Some(ctx) = crate::project_context::detect_project_context(path_obj) {
+                    m.project_context = Some(format!("{} ({})", ctx.root_name, ctx.project_type.display_label()));
+                    m.is_vcs_internal = ctx.is_vcs_internal;
+                } else if m.path.contains("/.git/") || m.path.contains("\\.git\\") {
+                    m.is_vcs_internal = true;
+                    m.project_context = Some("Git Internal".to_string());
+                }
+            }
+
+            let is_cross_project = if members.len() > 1 {
+                let p0 = std::path::Path::new(&members[0].path);
+                members[1..].iter().any(|m| crate::project_context::are_cross_project(p0, std::path::Path::new(&m.path)))
+            } else {
+                false
+            };
+
             groups.push(DuplicateGroup {
                 id: gid,
                 session_id,
@@ -706,6 +733,7 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                 size_bytes: size as u64,
                 members,
                 recommended_keep_file_id: keep,
+                is_cross_project,
             });
         }
         Ok((groups, total))
@@ -730,10 +758,28 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
              WHERE m.group_id = ?1 ORDER BY f.path"
         )).map_err(|e| e.to_string())?;
 
-        let members = mstmt.query_map(params![group_id], map_file)
+        let mut members = mstmt.query_map(params![group_id], map_file)
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
+
+        for m in &mut members {
+            let path_obj = std::path::Path::new(&m.path);
+            if let Some(ctx) = crate::project_context::detect_project_context(path_obj) {
+                m.project_context = Some(format!("{} ({})", ctx.root_name, ctx.project_type.display_label()));
+                m.is_vcs_internal = ctx.is_vcs_internal;
+            } else if m.path.contains("/.git/") || m.path.contains("\\.git\\") {
+                m.is_vcs_internal = true;
+                m.project_context = Some("Git Internal".to_string());
+            }
+        }
+
+        let is_cross_project = if members.len() > 1 {
+            let p0 = std::path::Path::new(&members[0].path);
+            members[1..].iter().any(|m| crate::project_context::are_cross_project(p0, std::path::Path::new(&m.path)))
+        } else {
+            false
+        };
 
         Ok(Some(DuplicateGroup {
             id: group_id,
@@ -742,6 +788,7 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
             size_bytes: size as u64,
             members,
             recommended_keep_file_id: keep,
+            is_cross_project,
         }))
     }
 
@@ -1223,6 +1270,11 @@ pub fn map_file(row: &Row) -> Result<FileRecord, rusqlite::Error> {
         copy_role: row.get::<_, Option<String>>(15)?
             .map(|s| CopyRole::parse(&s))
             .unwrap_or(CopyRole::Working),
+        project_context: None,
+        is_vcs_internal: false,
+        empty_risk: None,
+        empty_risk_badge: None,
+        empty_risk_reason: None,
     })
 }
 

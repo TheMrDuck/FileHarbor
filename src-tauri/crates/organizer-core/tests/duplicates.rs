@@ -318,3 +318,58 @@ fn exact_duplicate_with_backup_copy_preserves_backup_as_protected() {
     // Reclaimable space only counts extra working copies (not protected backup copies)
     assert_eq!(g.reclaimable_bytes(), content.len() as u64);
 }
+
+
+#[test]
+fn test_path_aware_recommendation_prefers_canonical_over_folder_copy() {
+    let s = store();
+    let root = temp_root("test-server-copies");
+
+    let canonical_dir = root.join("Server 1.21.4 with saeed");
+    let copy_dir = root.join("Server 1.21.4 with saeed - Copy");
+    fs::create_dir_all(&canonical_dir).unwrap();
+    fs::create_dir_all(&copy_dir).unwrap();
+
+    let content = b"minecraft server runtime jar binary content";
+    write_file(&canonical_dir, "server.jar", content);
+    write_file(&copy_dir, "server.jar", content);
+
+    let session = scan(&s, &[canonical_dir.clone(), copy_dir.clone()], "server-copy-test");
+    let groups = duplicate_groups(&s, session);
+
+    assert_eq!(groups.len(), 1);
+    let g = &groups[0];
+
+    let keep_member = g.members.iter().find(|m| m.id == g.recommended_keep_file_id).unwrap();
+    assert!(
+        keep_member.path.contains("Server 1.21.4 with saeed"),
+        "Keep recommendation must choose canonical directory, not '- Copy' directory! Selected: {}",
+        keep_member.path
+    );
+    assert!(
+        !keep_member.path.contains("- Copy"),
+        "Folder with '- Copy' must never be recommended to keep over canonical folder"
+    );
+}
+
+#[test]
+fn test_cross_project_duplicate_groups_flagged() {
+    let s = store();
+    let root = temp_root("test-cross-projects");
+
+    let s1_dir = root.join("Server 1.20.4");
+    let s2_dir = root.join("Server with Zaid");
+    fs::create_dir_all(&s1_dir).unwrap();
+    fs::create_dir_all(&s2_dir).unwrap();
+
+    let content = b"shared spigot server engine";
+    write_file(&s1_dir, "server.jar", content);
+    write_file(&s2_dir, "server.jar", content);
+
+    let session = scan(&s, &[s1_dir.clone(), s2_dir.clone()], "cross-project-test");
+    let groups = duplicate_groups(&s, session);
+
+    assert_eq!(groups.len(), 1);
+    let g = &groups[0];
+    assert!(g.is_cross_project, "Duplicate files across distinct server directories must be flagged as is_cross_project");
+}

@@ -27,4 +27,7 @@ pub mod settings;
 pub mod store;
 pub mod triage;
 
+pub mod empty_classifier;
+pub mod project_context;
+
 pub use cancel::CancelToken;

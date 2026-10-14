@@ -17,6 +17,18 @@ use crate::store::{DuplicateGroupInput, Store};
 const GENERATED_NAME_MARKERS: &[&str] = &[
     "copy", "duplicate", "kopie", "backup", "(1)", "(2)", "(3)", "(4)", "(5)",
     "- backup", "final", "final_", "_final", "~", "recovered_", "download",
+    " - copy", " (copy)", "_copy", "copy of",
+];
+
+const GENERATED_PATH_MARKERS: &[&str] = &[
+    " - copy",
+    " (copy)",
+    "_copy",
+    "copy of",
+    " - backup",
+    "(1)",
+    "(2)",
+    "(3)",
 ];
 
 /// Build and persist duplicate groups for a session based on stored
@@ -61,8 +73,10 @@ pub fn build_groups(store: &Store, session_id: i64) -> Result<(), String> {
 ///
 /// Scoring prefers:
 /// 1. Original-looking filenames (penalizes "copy", "(1)", etc.)
-/// 2. Shallower directory depth (closer to user-organized locations)
-/// 3. Oldest modification date (most likely the original)
+/// 2. Clean paths without folder-level copy markers (e.g. "Server - Copy")
+/// 3. Normal working locations over internal VCS (.git) or package cache directories
+/// 4. Shallower directory depth (closer to user-organized locations)
+/// 5. Oldest modification date (most likely the original)
 pub fn recommend_keep(members: &[FileRecord]) -> i64 {
     // Primary key: heuristic score (lower is better).
     // Tiebreakers: oldest modification date first, then path.
@@ -70,12 +84,27 @@ pub fn recommend_keep(members: &[FileRecord]) -> i64 {
         .iter()
         .map(|m| {
             let name_lower = m.file_name.to_lowercase();
+            let path_lower = m.path.to_lowercase();
             let mut score: u64 = 0;
             if m.copy_role == CopyRole::Backup {
                 score += 1_000_000;
             }
             if GENERATED_NAME_MARKERS.iter().any(|marker| name_lower.contains(marker)) {
                 score += 100;
+            }
+            // Check folder path markers (penalize folders named "... - Copy")
+            for marker in GENERATED_PATH_MARKERS {
+                if path_lower.contains(marker) {
+                    score += 50_000;
+                    break;
+                }
+            }
+            // Heavily penalize internal VCS files (e.g. .git/lfs/objects/...) so they are never recommended to keep over working files!
+            if path_lower.contains("/.git/") || path_lower.contains("\\.git\\")
+                || path_lower.contains("/.svn/") || path_lower.contains("\\.svn\\")
+                || path_lower.contains("/node_modules/") || path_lower.contains("\\node_modules\\")
+            {
+                score += 5_000_000;
             }
             score += m.path.matches(['/', '\\']).count() as u64;
             if m.scan_status != ScanStatus::Completed {
@@ -135,6 +164,12 @@ pub fn explain_duplicate_group(group: &DuplicateGroup) -> DuplicateExplanation {
             _ => None,
         };
 
+        let path_obj = std::path::Path::new(&m.path);
+        let proj_ctx = crate::project_context::detect_project_context(path_obj);
+        let project_context = proj_ctx.as_ref().map(|c| format!("{} ({})", c.root_name, c.project_type.display_label()));
+        let is_vcs_internal = proj_ctx.as_ref().map(|c| c.is_vcs_internal).unwrap_or(false)
+            || m.path.contains("/.git/") || m.path.contains("\\.git\\");
+
         DuplicateMemberExplanation {
             file_id: m.id,
             file_name: m.file_name.clone(),
@@ -145,6 +180,8 @@ pub fn explain_duplicate_group(group: &DuplicateGroup) -> DuplicateExplanation {
             has_duplicate_markers: has_markers,
             path_depth,
             role_protection_note,
+            project_context,
+            is_vcs_internal,
         }
     }).collect();
 

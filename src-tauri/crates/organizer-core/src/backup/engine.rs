@@ -531,6 +531,11 @@ impl<'a> BackupEngine<'a> {
                 scan_status,
                 error: None,
                 copy_role: CopyRole::Working,
+                project_context: None,
+                is_vcs_internal: false,
+                empty_risk: None,
+                empty_risk_badge: None,
+                empty_risk_reason: None,
             });
         }
 

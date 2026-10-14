@@ -46,13 +46,23 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
         const res = await api.duplicateGroups(sessionId, p);
         setGroups(res.items);
         setTotalGroups(res.total);
-        // Default selection: every copy except the recommended keep.
+        // Safe default selection:
+        // If files are cross-project (e.g. server.jar across servers) or internal VCS,
+        // leave them unselected by default to prevent breaking working instances!
         const next = new Map<number, Set<number>>();
         for (const g of res.items) {
-          next.set(
-            g.id,
-            new Set(g.members.filter((m) => m.id !== g.recommended_keep_file_id && m.copy_role !== 'backup').map((m) => m.id))
-          );
+          if (g.is_cross_project) {
+            next.set(g.id, new Set());
+          } else {
+            next.set(
+              g.id,
+              new Set(
+                g.members
+                  .filter((m) => m.id !== g.recommended_keep_file_id && m.copy_role !== 'backup' && !m.is_vcs_internal)
+                  .map((m) => m.id)
+              )
+            );
+          }
         }
         setSelected(next);
         setPage(p);
@@ -86,10 +96,43 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
       const next = new Map(prev);
       next.set(
         g.id,
-        new Set(g.members.filter((m) => m.id !== g.recommended_keep_file_id && m.copy_role !== 'backup').map((m) => m.id))
+        new Set(g.members.filter((m) => m.id !== g.recommended_keep_file_id && m.copy_role !== 'backup' && !m.is_vcs_internal).map((m) => m.id))
       );
       return next;
     });
+
+  const keepAllInGroup = (groupId: number) => {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      next.set(groupId, new Set());
+      return next;
+    });
+    showToast('Marked all copies in this group to keep.');
+  };
+
+  const deselectAllOnPage = () => {
+    const next = new Map<number, Set<number>>();
+    for (const g of groups) {
+      next.set(g.id, new Set());
+    }
+    setSelected(next);
+    showToast('Cleared all selections on this page.');
+  };
+
+  const ignoreFolder = async (filePath: string) => {
+    const sep = filePath.includes('\\') ? '\\' : '/';
+    const parts = filePath.split(sep);
+    parts.pop(); // remove file name
+    const folder = parts.join(sep);
+    if (!folder) return;
+    try {
+      await api.addExclusion(folder);
+      showToast(`Excluded folder: ${folder}`);
+      await load(page);
+    } catch (e) {
+      showToast(`Failed to exclude folder: ${String(e)}`, 'error');
+    }
+  };
 
   const selectedFiles = () => {
     const ids: number[] = [];
@@ -154,13 +197,23 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
               <strong>{selIds.length}</strong> file(s) selected ·{" "}
               <strong>{formatBytes(selBytes)}</strong> will move to Quarantine
             </span>
-            <button
-              className="btn btn-primary"
-              disabled={selIds.length === 0}
-              onClick={() => setConfirming({ files: selIds.length, bytes: selBytes, ids: selIds })}
-            >
-              Review & move to quarantine…
-            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                className="btn btn-secondary btn-small"
+                onClick={deselectAllOnPage}
+                disabled={selIds.length === 0}
+                title="Deselect all files on this page to keep everything"
+              >
+                Deselect All
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={selIds.length === 0}
+                onClick={() => setConfirming({ files: selIds.length, bytes: selBytes, ids: selIds })}
+              >
+                Review & move to quarantine…
+              </button>
+            </div>
           </div>
 
           {groups.map((g) => {
@@ -169,13 +222,29 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
             return (
               <article key={g.id} className="card dup-group">
                 <header className="dup-header">
-                  <h3>
-                    {g.members.length} identical files · {formatBytes(g.size_bytes)} each
-                  </h3>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <h3>
+                      {g.members.length} identical files · {formatBytes(g.size_bytes)} each
+                    </h3>
+                    {g.is_cross_project && (
+                      <span className="badge badge-cross-project" title="Files reside in separate project/server roots">
+                        ⚠️ Cross-Project Runtimes
+                      </span>
+                    )}
+                  </div>
                   <span className="reclaimable">
                     Reclaimable: <strong>{formatBytes(groupReclaimable(g))}</strong>
                   </span>
                 </header>
+
+                {g.is_cross_project && (
+                  <div className="cross-project-banner">
+                    <IconAlert size={14} />
+                    <span>
+                      <strong>Independent Server / Project Roots:</strong> These files are located in separate server environments (e.g. independent Minecraft servers). Kept by default to prevent breaking running servers.
+                    </span>
+                  </div>
+                )}
 
                 <table className="file-table">
                   <thead>
@@ -217,7 +286,33 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
                             )}
                           </td>
                           <td className="mono truncated" title={m.path}>
-                            {m.path}
+                            <div className="dup-path-cell">
+                              <span className="dup-path-text">{m.path}</span>
+                              <div className="dup-path-tags">
+                                {m.project_context && (
+                                  <span className="badge badge-project" title={`Project Root: ${m.project_context}`}>
+                                    {m.project_context.toLowerCase().includes("server") ? "🎮 " : "📦 "}
+                                    {m.project_context}
+                                  </span>
+                                )}
+                                {m.is_vcs_internal && (
+                                  <span className="badge badge-vcs" title="Internal Git/VCS storage (do not delete independently)">
+                                    🔒 Git Internal
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn-link-action"
+                                  title="Whitelist this folder from current and future scans"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    ignoreFolder(m.path);
+                                  }}
+                                >
+                                  Ignore folder
+                                </button>
+                              </div>
+                            </div>
                           </td>
                           <td>{formatBytes(m.size_bytes)}</td>
                           <td>{formatDate(m.modified_at_ms)}</td>
@@ -244,9 +339,22 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
                       <IconLightbulb size={13} />
                       <span>Why?</span>
                     </button>
+                    <button
+                      className="btn btn-secondary btn-small"
+                      style={{ fontWeight: 600 }}
+                      onClick={() => keepAllInGroup(g.id)}
+                      title="Keep all copies in this group intact without deleting any"
+                    >
+                      Keep All (Don't Delete)
+                    </button>
                     <button className="btn btn-ghost btn-small" onClick={() => selectAllCopiesExceptKeep(g)}>
                       Reset selection
                     </button>
+                    {groupSel.size === 0 && (
+                      <span className="badge badge-success" style={{ marginLeft: "auto" }}>
+                        ✓ Keeping All Copies
+                      </span>
+                    )}
                     <button
                       className="btn btn-ghost btn-small"
                       onClick={() =>

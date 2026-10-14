@@ -17,6 +17,11 @@ export interface FileRecord {
   scan_status: string;
   error: string | null;
   copy_role?: CopyRole;
+  project_context?: string | null;
+  is_vcs_internal?: boolean;
+  empty_risk?: 'high' | 'medium' | 'low' | null;
+  empty_risk_badge?: string | null;
+  empty_risk_reason?: string | null;
 }
 
 export interface ScanSession {
@@ -46,6 +51,7 @@ export interface DuplicateGroup {
   size_bytes: number;
   members: FileRecord[];
   recommended_keep_file_id: number;
+  is_cross_project?: boolean;
 }
 
 /** Reclaimable space = total minus kept copy, excluding protected backup copies (Section 4 & 97). */
@@ -538,6 +544,8 @@ export interface DuplicateMemberExplanation {
   has_duplicate_markers: boolean;
   path_depth: number;
   role_protection_note: string | null;
+  project_context?: string | null;
+  is_vcs_internal?: boolean;
 }
 
 export interface ExtensionRectificationProposal {

@@ -272,6 +272,16 @@ pub struct FileRecord {
     pub error: Option<String>,
     #[serde(default)]
     pub copy_role: CopyRole,
+    #[serde(default)]
+    pub project_context: Option<String>,
+    #[serde(default)]
+    pub is_vcs_internal: bool,
+    #[serde(default)]
+    pub empty_risk: Option<String>,
+    #[serde(default)]
+    pub empty_risk_badge: Option<String>,
+    #[serde(default)]
+    pub empty_risk_reason: Option<String>,
 }
 
 /// New file record before it has a database id.
@@ -325,6 +335,8 @@ pub struct DuplicateGroup {
     pub members: Vec<FileRecord>,
     /// Recommendation only - the user always decides which copies to keep.
     pub recommended_keep_file_id: i64,
+    #[serde(default)]
+    pub is_cross_project: bool,
 }
 
 impl DuplicateGroup {
@@ -442,6 +454,10 @@ pub struct DuplicateMemberExplanation {
     pub has_duplicate_markers: bool,
     pub path_depth: usize,
     pub role_protection_note: Option<String>,
+    #[serde(default)]
+    pub project_context: Option<String>,
+    #[serde(default)]
+    pub is_vcs_internal: bool,
 }
 
 
