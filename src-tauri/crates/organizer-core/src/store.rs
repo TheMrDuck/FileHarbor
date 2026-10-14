@@ -546,6 +546,18 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
         Ok(FilePage { items, total })
     }
 
+    /// Total count of file records for a session.
+    pub fn count_files(&self, session_id: i64) -> Result<u64, String> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM file_records WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c as u64)
+            .map_err(|e| e.to_string())
+    }
+
     /// Files in problematic states (inaccessible / failed / unstable).
     pub fn problem_files(&self, session_id: i64, limit: usize, offset: usize) -> Result<FilePage, String> {
         let statuses = "'inaccessible','hash_failed','changed_during_scan'";

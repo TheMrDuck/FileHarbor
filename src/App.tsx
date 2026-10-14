@@ -55,6 +55,13 @@ interface ScanState {
   progress: ScanProgress | null;
 }
 
+const SCAN_STEPS = [
+  { key: "discovering", label: "Discover", number: 1 },
+  { key: "finding_candidates", label: "Filter", number: 2 },
+  { key: "hashing", label: "Hash", number: 3 },
+  { key: "building_results", label: "Results", number: 4 },
+];
+
 export default function App() {
   const [page, setPage] = useState<Page>("scan");
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
@@ -63,8 +70,20 @@ export default function App() {
   const [activeSnapshotId, setActiveSnapshotId] = useState<number | null>(null);
   const [initialScanRoots, setInitialScanRoots] = useState<string[] | undefined>(undefined);
   const [scan, setScan] = useState<ScanState | null>(null);
+  const [scanElapsedSeconds, setScanElapsedSeconds] = useState(0);
   const [finishedNotice, setFinishedNotice] = useState<ScanFinished | null>(null);
   const [toast, setToast] = useState<{ text: string; kind: "info" | "error" } | null>(null);
+
+  useEffect(() => {
+    if (!scan) {
+      setScanElapsedSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setScanElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [scan?.sessionId]);
 
   const navigateTo = (
     targetPage: Page,
@@ -144,6 +163,57 @@ export default function App() {
       ],
     },
   ];
+
+  const currentPhaseKey = scan?.progress?.phase || "discovering";
+  const currentStepIndex =
+    currentPhaseKey === "discovering"
+      ? 0
+      : currentPhaseKey === "finding_candidates"
+        ? 1
+        : currentPhaseKey === "hashing"
+          ? 2
+          : currentPhaseKey === "building_results"
+            ? 3
+            : 4; // done
+
+  let progressPercent = 0;
+  let progressDetail = "";
+  let currentSpeed = "";
+
+  if (scan?.progress) {
+    const { phase, files_discovered, candidates_total, candidates_hashed } = scan.progress;
+    if (phase === "discovering") {
+      progressPercent = files_discovered > 0 ? Math.min(25, Math.max(8, Math.floor(Math.log10(files_discovered + 1) * 5))) : 5;
+      progressDetail = `${files_discovered.toLocaleString()} files indexed`;
+      const speed = Math.round(files_discovered / Math.max(1, scanElapsedSeconds));
+      currentSpeed = speed > 0 ? `~${speed.toLocaleString()} files/s` : "Indexing…";
+    } else if (phase === "finding_candidates") {
+      progressPercent = 30;
+      progressDetail = "Grouping candidate sizes in database";
+      currentSpeed = "Querying SQL";
+    } else if (phase === "hashing") {
+      const hashRatio = candidates_total > 0 ? candidates_hashed / candidates_total : 0;
+      progressPercent = Math.min(90, Math.round(30 + hashRatio * 60));
+      const pct = candidates_total > 0 ? Math.round(hashRatio * 100) : 0;
+      progressDetail = `${candidates_hashed.toLocaleString()} / ${candidates_total.toLocaleString()} (${pct}%)`;
+      const speed = Math.round(candidates_hashed / Math.max(1, scanElapsedSeconds));
+      currentSpeed = speed > 0 ? `~${speed.toLocaleString()} hashes/s` : "Hashing…";
+    } else if (phase === "building_results") {
+      progressPercent = 95;
+      progressDetail = "Building duplicate groups & metrics";
+      currentSpeed = "Finalizing";
+    } else if (phase === "done") {
+      progressPercent = 100;
+      progressDetail = "Scan complete";
+      currentSpeed = "Done";
+    }
+  }
+
+  const formatElapsed = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   const phaseLabel = scan?.progress ? PHASE_LABELS[scan.progress.phase] ?? scan.progress.phase : "";
 
@@ -273,58 +343,136 @@ export default function App() {
       {scan && (
         <div className="overlay-backdrop" role="dialog" aria-modal="true" aria-label="Scan in progress">
           <div className="modal scan-overlay">
-            <h2>Scanning…</h2>
-            <p className="phase">{phaseLabel}</p>
+            <div className="scan-modal-header">
+              <div className="scan-modal-title">
+                <span className="scan-radar-pulse" aria-hidden="true" />
+                <h2>{scan.progress?.phase === "done" ? "Scan Complete" : "Scanning Files…"}</h2>
+              </div>
+              <div className="scan-timer-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <span>{formatElapsed(scanElapsedSeconds)}</span>
+              </div>
+            </div>
+
+            {/* Stepper Pipeline */}
+            <div className="scan-stepper">
+              {SCAN_STEPS.map((step, idx) => {
+                const isDone = currentStepIndex > idx;
+                const isActive = currentStepIndex === idx;
+                return (
+                  <div key={step.key} className={`scan-step ${isDone ? "done" : isActive ? "active" : "pending"}`}>
+                    <div className="scan-step-indicator">
+                      {isDone ? (
+                        <svg className="step-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : isActive ? (
+                        <span className="step-spinner-dot" />
+                      ) : (
+                        <span>{step.number}</span>
+                      )}
+                    </div>
+                    <span className="scan-step-label">{step.label}</span>
+                    {idx < SCAN_STEPS.length - 1 && <div className={`scan-step-connector ${isDone ? "done" : ""}`} />}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Dual-Track Visual Progress Bar */}
+            <div className="scan-progress-wrapper">
+              <div className="scan-progress-track">
+                <div
+                  className={`scan-progress-fill ${currentPhaseKey === "discovering" ? "pulse-shimmer" : ""}`}
+                  style={{ width: `${progressPercent}%` }}
+                >
+                  <div className="scan-progress-glow" />
+                </div>
+              </div>
+              <div className="scan-progress-meta">
+                <span className="scan-progress-phase-text">{phaseLabel}</span>
+                <span className="scan-progress-percentage">{progressPercent}%</span>
+              </div>
+            </div>
+
             {scan.progress ? (
               <>
-                <dl className="scan-stats">
-                  <div><dt>Discovered</dt><dd>{scan.progress.files_discovered.toLocaleString()}</dd></div>
-                  <div><dt>Processed</dt><dd>{scan.progress.files_processed.toLocaleString()}</dd></div>
-                  {scan.progress.candidates_total > 0 && (
-                    <div>
-                      <dt>Hashed candidates</dt>
-                      <dd>
-                        {scan.progress.candidates_hashed.toLocaleString()} /{" "}
-                        {scan.progress.candidates_total.toLocaleString()}
-                      </dd>
-                    </div>
-                  )}
-                  {scan.progress.errors > 0 && (
-                    <div><dt>Errors so far</dt><dd>{scan.progress.errors}</dd></div>
-                  )}
-                </dl>
-                <p className="current-path mono" aria-live="polite">
-                  {scan.progress.current_path || "\u00A0"}
-                </p>
+                {/* Bento Metrics Grid */}
+                <div className="scan-stats-grid">
+                  <div className="stat-card">
+                    <span className="stat-label">Discovered</span>
+                    <span className="stat-value">{scan.progress.files_discovered.toLocaleString()}</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">Candidate Hashing</span>
+                    <span className="stat-value">
+                      {scan.progress.candidates_total > 0
+                        ? `${scan.progress.candidates_hashed.toLocaleString()} / ${scan.progress.candidates_total.toLocaleString()}`
+                        : currentStepIndex > 1
+                          ? "0 candidates"
+                          : "Evaluating…"}
+                    </span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">Throughput</span>
+                    <span className="stat-value">{currentSpeed}</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">Status</span>
+                    <span className="stat-value highlight">{progressDetail}</span>
+                  </div>
+                </div>
+
+                {scan.progress.errors > 0 && (
+                  <div className="scan-error-callout">
+                    <span className="error-icon">⚠️</span>
+                    <span>{scan.progress.errors.toLocaleString()} inaccessible or skipped files</span>
+                  </div>
+                )}
+
+                {/* Live File Stream Marquee */}
+                <div className="scan-current-file">
+                  <span className="file-stream-dot" aria-hidden="true" />
+                  <span className="current-path mono" title={scan.progress.current_path}>
+                    {scan.progress.current_path || "Scanning filesystem…"}
+                  </span>
+                </div>
               </>
             ) : (
-              <p>Starting scan…</p>
+              <div className="scan-starting-state">
+                <div className="scan-spinner-ring" />
+                <p>Initializing scan engine and analyzing target roots…</p>
+              </div>
             )}
-            {scan.progress?.phase === "done" ? (
-              <>
-                <p className="hint">Scan complete. Results are ready.</p>
+
+            {/* Actions */}
+            <div className="scan-modal-actions">
+              {scan.progress?.phase === "done" ? (
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary btn-large"
                   onClick={() => {
                     setActiveSessionId(scan.sessionId);
                     setPage("overview");
                     setScan(null);
                   }}
                 >
-                  View results
+                  View Scan Results →
                 </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => api.cancelScan(scan.sessionId)}
-                >
-                  Cancel scan
-                </button>
-                <p className="hint">Cancellation is safe: partial results stay available.</p>
-              </>
-            )}
+              ) : (
+                <div className="scan-actions-group">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => api.cancelScan(scan.sessionId)}
+                  >
+                    Cancel Scan
+                  </button>
+                  <p className="hint">Cancellation is safe: partial results stay available.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

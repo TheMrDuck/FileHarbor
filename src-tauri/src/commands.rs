@@ -244,7 +244,7 @@ pub fn rebuild_analysis(
     let cfg = ScannerConfig::default();
     let cancel = CancelToken::new();
     let store = state.store.lock().map_err(|_| "lock error")?;
-    scanner::run_analysis(&store, &cfg, session_id, &cancel, &|_| {})
+    scanner::run_analysis(&store, &cfg, session_id, &cancel, &|_| {}, None)
         .map_err(|e| match e {
             scanner::AnalysisError::Cancelled => "cancelled".to_string(),
             scanner::AnalysisError::Fatal(msg) => msg,

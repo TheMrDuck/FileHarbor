@@ -99,7 +99,7 @@ pub fn run_scan(
     cfg: &ScannerConfig,
     session_id: i64,
     cancel: &CancelToken,
-    progress: &dyn Fn(&ScanProgress),
+    progress: &(dyn Fn(&ScanProgress) + Send + Sync),
 ) -> SessionStatus {
     logutil::info(
         "scan_started",
@@ -120,7 +120,7 @@ pub fn run_scan(
         SessionStatus::Failed
     } else {
         // Analysis phases only run when discovery completed uncancelled.
-        match run_analysis(store, cfg, session_id, cancel, progress) {
+        match run_analysis(store, cfg, session_id, cancel, progress, Some(&counters)) {
             Ok(_) => SessionStatus::Completed,
             Err(AnalysisError::Cancelled) => SessionStatus::Cancelled,
             Err(AnalysisError::Fatal(e)) => {
@@ -151,7 +151,7 @@ trait EmitProgress {
     );
 }
 
-impl EmitProgress for &dyn Fn(&ScanProgress) {
+impl EmitProgress for &(dyn Fn(&ScanProgress) + Send + Sync) {
     fn emit_phase(
         &self,
         session_id: i64,
@@ -171,20 +171,6 @@ impl EmitProgress for &dyn Fn(&ScanProgress) {
             errors: counters.errors.load(Ordering::Relaxed) as u64,
             current_path: current_path.to_string(),
         });
-    }
-}
-
-impl EmitProgress for &&dyn Fn(&ScanProgress) {
-    fn emit_phase(
-        &self,
-        session_id: i64,
-        phase: ScanPhase,
-        current_path: &str,
-        counters: &ProgressCounters,
-        candidates_total: u64,
-        candidates_hashed: u64,
-    ) {
-        (*self).emit_phase(session_id, phase, current_path, counters, candidates_total, candidates_hashed)
     }
 }
 
@@ -220,7 +206,7 @@ fn phase_discovery(
     exclusions: &[String],
     session_id: i64,
     cancel: &CancelToken,
-    progress: &dyn Fn(&ScanProgress),
+    progress: &(dyn Fn(&ScanProgress) + Send + Sync),
     counters: &Arc<ProgressCounters>,
 ) -> SessionStatus {
     let mut batch: Vec<NewFileRecord> = Vec::with_capacity(DISCOVERY_BATCH);
@@ -376,9 +362,32 @@ pub fn run_analysis(
     _cfg: &ScannerConfig,
     session_id: i64,
     cancel: &CancelToken,
-    progress: &dyn Fn(&ScanProgress),
+    progress: &(dyn Fn(&ScanProgress) + Send + Sync),
+    counters: Option<&ProgressCounters>,
 ) -> Result<(), AnalysisError> {
+    let (total_discovered, total_processed, total_errors) = if let Some(c) = counters {
+        (
+            c.discovered.load(Ordering::Relaxed) as u64,
+            c.processed.load(Ordering::Relaxed) as u64,
+            c.errors.load(Ordering::Relaxed) as u64,
+        )
+    } else {
+        let count = store.count_files(session_id).unwrap_or(0);
+        (count, count, 0)
+    };
+
     // Phase 2: find same-size candidates entirely in SQL.
+    progress(&ScanProgress {
+        session_id,
+        phase: ScanPhase::FindingCandidates,
+        files_discovered: total_discovered,
+        files_processed: total_processed,
+        candidates_total: 0,
+        candidates_hashed: 0,
+        errors: total_errors,
+        current_path: "Analyzing duplicate file sizes...".to_string(),
+    });
+
     let sizes = store.candidate_sizes(session_id).map_err(AnalysisError::Fatal)?;
     let candidates = store
         .files_with_sizes(session_id, &sizes)
@@ -390,24 +399,7 @@ pub fn run_analysis(
         .cloned()
         .collect();
 
-    progress(
-        &ScanProgress {
-            session_id,
-            phase: ScanPhase::FindingCandidates,
-            files_discovered: 0,
-            files_processed: 0,
-            candidates_total: to_hash.len() as u64,
-            candidates_hashed: 0,
-            errors: 0,
-            current_path: String::new(),
-        },
-    );
-
-    // Phase 3: hash candidates in parallel with cache reuse.
-    // The DB is only touched on this thread (rusqlite is not Sync):
-    // cache lookups happen first, then pure filesystem work runs in
-    // parallel, then results are persisted.
-    let hashed_count = Arc::new(AtomicUsize::new(0));
+    let total_candidates = to_hash.len() as u64;
     let chunk_size = hasher::DEFAULT_CHUNK_SIZE;
 
     enum Work {
@@ -427,6 +419,27 @@ pub fn run_analysis(
     let compute_items: Vec<&(i64, Work)> =
         work_items.iter().filter(|(_, w)| matches!(w, Work::Compute(_))).collect();
     let total_compute = compute_items.len();
+    let total_cached = work_items.len().saturating_sub(total_compute);
+
+    let hashed_count = Arc::new(AtomicUsize::new(total_cached));
+
+    // Phase 3: Hash candidate files
+    progress(&ScanProgress {
+        session_id,
+        phase: ScanPhase::Hashing,
+        files_discovered: total_discovered,
+        files_processed: total_processed,
+        candidates_total: total_candidates,
+        candidates_hashed: total_cached as u64,
+        errors: total_errors,
+        current_path: if total_compute > 0 {
+            "Starting parallel hash computation...".to_string()
+        } else {
+            "Candidate hashes retrieved from cache.".to_string()
+        },
+    });
+
+    let last_progress_emit = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
 
     let outcomes: Vec<(i64, hasher::HashOutcome)> = compute_items
         .par_iter()
@@ -438,10 +451,41 @@ pub fn run_analysis(
             if cancel.is_cancelled() {
                 return (*file_id, hasher::HashOutcome::Failed("__cancelled__".into()));
             }
-            match hasher::sha256_file(Path::new(&rec.path), cancel, chunk_size) {
-                Ok(o) => (*file_id, o),
-                Err(_) => (*file_id, hasher::HashOutcome::Failed("__cancelled__".into())),
+            let outcome = match hasher::sha256_file(Path::new(&rec.path), cancel, chunk_size) {
+                Ok(o) => o,
+                Err(_) => hasher::HashOutcome::Failed("__cancelled__".into()),
+            };
+
+            let done = hashed_count.fetch_add(1, Ordering::Relaxed) + 1;
+            let should_emit = if done % 8 == 0 || done == (total_cached + total_compute) {
+                if let Ok(mut last) = last_progress_emit.lock() {
+                    if last.elapsed().as_millis() >= 80 || done == (total_cached + total_compute) {
+                        *last = std::time::Instant::now();
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if should_emit {
+                progress(&ScanProgress {
+                    session_id,
+                    phase: ScanPhase::Hashing,
+                    files_discovered: total_discovered,
+                    files_processed: total_processed,
+                    candidates_total: total_candidates,
+                    candidates_hashed: done as u64,
+                    errors: total_errors,
+                    current_path: rec.path.clone(),
+                });
             }
+
+            (*file_id, outcome)
         })
         .collect();
 
@@ -463,7 +507,6 @@ pub fn run_analysis(
                         store.hash_cache_put(&rec.path, rec.size_bytes, rec.modified_at_ms, &hash);
                     }
                 }
-                hashed_count.fetch_add(1, Ordering::Relaxed);
             }
             hasher::HashOutcome::Unstable => {
                 let _ = store.update_file_hash_result(
@@ -488,18 +531,6 @@ pub fn run_analysis(
                 }
             }
         }
-        if hashed_count.load(Ordering::Relaxed).is_multiple_of(32) {
-            progress(&ScanProgress {
-                session_id,
-                phase: ScanPhase::Hashing,
-                files_discovered: 0,
-                files_processed: 0,
-                candidates_total: to_hash.len() as u64,
-                candidates_hashed: hashed_count.load(Ordering::Relaxed) as u64,
-                errors: 0,
-                current_path: String::new(),
-            });
-        }
     }
 
     // Persist cached-hash hits without touching the filesystem again.
@@ -512,10 +543,20 @@ pub fn run_analysis(
                 ScanStatus::Completed,
                 None,
             );
-            hashed_count.fetch_add(1, Ordering::Relaxed);
         }
     }
-    let _ = total_compute;
+
+    let final_hashed = hashed_count.load(Ordering::Relaxed) as u64;
+    progress(&ScanProgress {
+        session_id,
+        phase: ScanPhase::Hashing,
+        files_discovered: total_discovered,
+        files_processed: total_processed,
+        candidates_total: total_candidates,
+        candidates_hashed: final_hashed,
+        errors: total_errors,
+        current_path: String::new(),
+    });
 
     if cancel.is_cancelled() || cancelled {
         return Err(AnalysisError::Cancelled);
@@ -525,12 +566,12 @@ pub fn run_analysis(
     progress(&ScanProgress {
         session_id,
         phase: ScanPhase::BuildingResults,
-        files_discovered: 0,
-        files_processed: 0,
-        candidates_total: to_hash.len() as u64,
-        candidates_hashed: hashed_count.load(Ordering::Relaxed) as u64,
-        errors: 0,
-        current_path: String::new(),
+        files_discovered: total_discovered,
+        files_processed: total_processed,
+        candidates_total: total_candidates,
+        candidates_hashed: final_hashed,
+        errors: total_errors,
+        current_path: "Grouping duplicates and calculating space savings...".to_string(),
     });
 
     dupdetect::build_groups(store, session_id).map_err(AnalysisError::Fatal)?;
