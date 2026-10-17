@@ -22,8 +22,8 @@ import BackupHistoryPage from "./pages/BackupHistoryPage";
 
 const BackupHealthPage = lazy(() => import("./pages/BackupHealthPage"));
 const TestDataPage = lazy(() => import("./pages/TestDataPage"));
-const DownloadsTriagePage = lazy(() =>
-  import("./components/DownloadsTriagePage").then((m) => ({ default: m.DownloadsTriagePage }))
+const FolderTriagePage = lazy(() =>
+  import("./components/DownloadsTriagePage").then((m) => ({ default: m.FolderTriagePage || m.DownloadsTriagePage }))
 );
 const HealthRecoveryPage = lazy(() =>
   import("./components/HealthRecoveryPage").then((m) => ({ default: m.HealthRecoveryPage }))
@@ -143,7 +143,7 @@ export default function App() {
     {
       title: "Action & Triage",
       items: [
-        { id: "triage", label: "Downloads Triage" },
+        { id: "triage", label: "Folder Triage" },
         { id: "health-recovery", label: "Health & Carving" },
         { id: "quarantine", label: "Quarantine" },
       ],
@@ -335,7 +335,7 @@ export default function App() {
               }}
             />
           )}
-          {page === "triage" && <DownloadsTriagePage />}
+          {page === "triage" && <FolderTriagePage />}
           {page === "health-recovery" && <HealthRecoveryPage />}
         </Suspense>
       </main>

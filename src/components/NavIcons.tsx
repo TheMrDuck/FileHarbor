@@ -53,9 +53,9 @@ export function NavIcon({ page }: { page: Page }): ReactNode {
     case "triage":
       return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="8 17 12 21 16 17" />
-          <line x1="12" y1="12" x2="12" y2="21" />
-          <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
+          <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+          <path d="M12 10v6" />
+          <path d="m9 13 3 3 3-3" />
         </svg>
       );
     case "health-recovery":

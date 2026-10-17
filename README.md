@@ -62,7 +62,7 @@ FileHarbor operates on **verifiable filesystem facts**. It never guesses or sile
 - **Header & EXIF Carving**: Recovers metadata, dimensions, and timestamps from truncated or partially damaged files.
 
 ### 7. Triage & Privacy Auditing
-- **Downloads Triage**: Categorizes stale downloads, ephemeral installers, and archives by age and access history.
+- **Folder Triage**: Categorizes loose clutter, stale downloads, ephemeral installers, and messy directories into structured category subfolders.
 - **Privacy Scanner**: Flags unencrypted private keys, API tokens, and credentials residing in scanned folders.
 
 ---
@@ -72,7 +72,7 @@ FileHarbor operates on **verifiable filesystem facts**. It never guesses or sile
 | What you are trying to do | Tool to Use | What it does |
 |---|---|---|
 | **Free up disk space safely** | **Analysis &rarr; New Scan &amp; Duplicates** | Discovers byte-for-byte exact SHA-256 duplicate files and empty files. Recommends which copy to keep without ever deleting anything automatically. |
-| **Clean a chaotic Downloads folder** | **Action &amp; Triage &rarr; Downloads Triage** | Analyzes loose files and neatly groups installers (`.exe`/`.msi`), archives, code, and documents into categorized subfolders. |
+| **Clean a chaotic folder or Downloads** | **Action &amp; Triage &rarr; Folder Triage** | Analyzes loose files in any messy folder and neatly groups installers (`.exe`/`.msi`), archives, code, and documents into categorized subfolders. |
 | **Fix files with broken extensions (`.bin`/`.tmp`)** | **Health &amp; Recovery &rarr; Signature Rectifier** | Inspects magic bytes (PNG, JPEG, PDF, MP4, etc.) and restores the genuine file extension. |
 | **Organize nameless recovered photos (`FILE001.JPG`)** | **Health &amp; Recovery &rarr; Deep Carving** | Extracts EXIF camera metadata and capture dates to restore human-readable structured filenames. |
 | **Repair a file using two damaged copies** | **Health &amp; Recovery &rarr; Multi-Copy Reconstruction** | Scans byte sectors across two partially damaged copies and stitches the intact parts into one healthy file. |

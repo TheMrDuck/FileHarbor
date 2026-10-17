@@ -289,7 +289,7 @@ export default function SettingsPage() {
             <div>
               <strong>Shield sensitive credentials and key directories (Recommended)</strong>
               <div className="hint">
-                Automatically skips sensitive directories (.ssh, .aws, .gnupg, .kube, crypto wallets) and credential vaults (.kdbx, .pem, .key) during all scans, downloads triage, and health inspections.
+                Automatically skips sensitive directories (.ssh, .aws, .gnupg, .kube, crypto wallets) and credential vaults (.kdbx, .pem, .key) during all scans, folder triage, and health inspections.
               </div>
             </div>
           </label>

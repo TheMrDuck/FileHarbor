@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { downloadDir, desktopDir, documentDir } from "@tauri-apps/api/path";
 import { api, formatBytes } from "../api";
 import type { TriagePlan } from "../types";
 
-export const DownloadsTriagePage: React.FC = () => {
+export const FolderTriagePage: React.FC = () => {
   const [folderPath, setFolderPath] = useState<string>("");
   const [organizeByCategory, setOrganizeByCategory] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
@@ -17,6 +18,17 @@ export const DownloadsTriagePage: React.FC = () => {
       const selected = await open({ directory: true, multiple: false });
       if (typeof selected === "string") {
         setFolderPath(selected);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const setPresetPath = async (getter: () => Promise<string>) => {
+    try {
+      const path = await getter();
+      if (path) {
+        setFolderPath(path);
       }
     } catch {
       // ignore
@@ -77,7 +89,7 @@ export const DownloadsTriagePage: React.FC = () => {
     try {
       const res = await api.executeTriageMoves({ items_to_move: itemsToMove });
       setStatusMessage(
-        `Successfully organized ${res.moved_count} file(s)!${
+        `Successfully organized ${res.moved_count} file(s) into category subfolders!${
           res.failed_items.length > 0
             ? ` (${res.failed_items.length} failed)`
             : ""
@@ -96,20 +108,22 @@ export const DownloadsTriagePage: React.FC = () => {
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div className="page-header">
         <div>
-          <h2>Downloads &amp; Loose File Triage</h2>
+          <h2>Folder Triage &amp; Clutter Organizer</h2>
           <p className="page-intro">
-            Organize messy Downloads, game saves, documents, and loose files
-            into structured category folders without risk of accidental overwrites.
+            Triage, clean up, and organize any messy directory — Downloads, Desktop, external drives, or unorganized work folders — neatly sorting loose clutter into categorized subfolders.
           </p>
         </div>
       </div>
 
       <div className="card">
+        <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>
+          Target Directory to Triage:
+        </label>
         <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
           <input
             type="text"
             style={{ flex: 1, minWidth: "260px" }}
-            placeholder="Folder path (e.g. C:\Users\Username\Downloads)"
+            placeholder="Select or enter any messy folder (e.g. Downloads, Desktop, USB drive, project dump)..."
             value={folderPath}
             onChange={(e) => setFolderPath(e.target.value)}
             aria-label="Triage target folder path"
@@ -119,14 +133,46 @@ export const DownloadsTriagePage: React.FC = () => {
             onClick={handleBrowseFolder}
             className="btn btn-secondary"
           >
-            Browse…
+            Browse Any Folder…
           </button>
           <button
             onClick={handleScan}
             disabled={loading || !folderPath.trim()}
             className="btn btn-primary"
           >
-            {loading ? "Scanning Folder..." : "Analyze Folder"}
+            {loading ? "Analyzing Folder..." : "Analyze Folder"}
+          </button>
+        </div>
+
+        {/* Quick Folder Presets */}
+        <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", fontSize: "12px" }}>
+          <span style={{ color: "var(--text-dim)" }}>Quick Presets:</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            style={{ padding: "3px 8px", fontSize: "12px" }}
+            onClick={() => setPresetPath(downloadDir)}
+            title="Set target to your Downloads folder"
+          >
+            📥 Downloads
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            style={{ padding: "3px 8px", fontSize: "12px" }}
+            onClick={() => setPresetPath(desktopDir)}
+            title="Set target to your Desktop folder"
+          >
+            🖥️ Desktop
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            style={{ padding: "3px 8px", fontSize: "12px" }}
+            onClick={() => setPresetPath(documentDir)}
+            title="Set target to your Documents folder"
+          >
+            📄 Documents
           </button>
         </div>
 
@@ -138,7 +184,7 @@ export const DownloadsTriagePage: React.FC = () => {
               onChange={(e) => setOrganizeByCategory(e.target.checked)}
               aria-label="Sort into subfolders by category"
             />
-            Sort into Subfolders (Documents, Media, Installers, Code, etc.)
+            Sort into Subfolders (Documents, Images, Videos, Installers, Archives, Code, etc.)
           </label>
         </div>
       </div>
@@ -146,6 +192,20 @@ export const DownloadsTriagePage: React.FC = () => {
       {statusMessage && (
         <div className="card" style={{ padding: "12px 16px", borderColor: "var(--accent)" }}>
           {statusMessage}
+        </div>
+      )}
+
+      {!plan && !loading && (
+        <div className="card" style={{ padding: "24px", color: "var(--text-dim)", fontSize: "13px", lineHeight: "1.6" }}>
+          <h3 style={{ margin: "0 0 8px 0", color: "var(--text)", fontSize: "15px" }}>
+            💡 Universal Clutter Triage
+          </h3>
+          <p style={{ margin: "0 0 8px 0" }}>
+            Whether it's your browser Downloads, cluttered Desktop, an old USB drive, or a disorganized archive, FileHarbor identifies file types through extensions and magic-bytes, builds a proposed reorganization tree, and safely moves files with collision protection.
+          </p>
+          <p style={{ margin: 0 }}>
+            Select a folder above and click <strong>Analyze Folder</strong> to preview the organized structure before making any changes.
+          </p>
         </div>
       )}
 
@@ -162,17 +222,17 @@ export const DownloadsTriagePage: React.FC = () => {
             <div className="stat-card">
               <div className="stat-label" style={{ color: "var(--warning)" }}>Stale Installers</div>
               <div className="stat-value" style={{ color: "var(--warning)" }}>{plan.stale_installers_count}</div>
-              <div className="stat-sub">Older than 30 days</div>
+              <div className="stat-sub">Setup packages &gt;30d old</div>
             </div>
 
             <div className="stat-card">
-              <div className="stat-label" style={{ color: "var(--danger)" }}>Incomplete Downloads</div>
+              <div className="stat-label" style={{ color: "var(--danger)" }}>Incomplete / Temp</div>
               <div className="stat-value" style={{ color: "var(--danger)" }}>{plan.incomplete_downloads_count}</div>
               <div className="stat-sub">.crdownload / .part files</div>
             </div>
 
             <div className="stat-card">
-              <div className="stat-label">Categories Identified</div>
+              <div className="stat-label">Identified Categories</div>
               <div className="stat-value">{Object.keys(plan.category_counts).length}</div>
               <div className="stat-sub">Structured destinations</div>
             </div>
@@ -222,6 +282,7 @@ export const DownloadsTriagePage: React.FC = () => {
                     <th style={{ padding: "10px", textAlign: "left" }}>Size</th>
                     <th style={{ padding: "10px", textAlign: "left" }}>Flags</th>
                     <th style={{ padding: "10px", textAlign: "left" }}>Target Subfolder</th>
+                    <th style={{ padding: "10px", textAlign: "right" }}>Inspect</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -271,6 +332,28 @@ export const DownloadsTriagePage: React.FC = () => {
                         <td className="mono truncated" style={{ padding: "10px", color: "var(--text-dim)" }} title={item.suggested_destination}>
                           {item.suggested_destination.split(/[\\/]/).slice(-2).join("/")}
                         </td>
+                        <td style={{ padding: "10px", textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: "inline-flex", gap: "6px" }}>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              style={{ padding: "2px 6px", fontSize: "11px" }}
+                              onClick={() => api.openFile(item.file_path).catch(() => {})}
+                              title="Open file in default system application"
+                            >
+                              ↗️ Open
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              style={{ padding: "2px 6px", fontSize: "11px" }}
+                              onClick={() => api.showInFolder(item.file_path).catch(() => {})}
+                              title="Reveal file in File Explorer"
+                            >
+                              📁 Reveal
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -283,3 +366,5 @@ export const DownloadsTriagePage: React.FC = () => {
     </div>
   );
 };
+
+export const DownloadsTriagePage = FolderTriagePage;
