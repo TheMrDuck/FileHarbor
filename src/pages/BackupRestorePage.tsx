@@ -18,6 +18,7 @@ export default function BackupRestorePage({ snapshotId: propSnapshotId, onNaviga
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [conflicts, setConflicts] = useState<Record<string, RestoreConflictPolicy>>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadSnapshot();
@@ -71,8 +72,7 @@ export default function BackupRestorePage({ snapshotId: propSnapshotId, onNaviga
         setError(`Restore completed with ${result.failed} failures. ${result.restored} files restored.`);
       } else {
         setError(null);
-        alert(`Restore completed successfully! ${result.restored} files restored, ${result.verified} verified.`);
-        if (onNavigate) onNavigate("backups");
+        setSuccessMessage(`Restore completed successfully! ${result.restored.toLocaleString()} files restored, ${result.verified.toLocaleString()} verified.`);
       }
     } catch (e) {
       setError(String(e));
@@ -119,6 +119,21 @@ export default function BackupRestorePage({ snapshotId: propSnapshotId, onNaviga
 
       {error && <p className="form-error" role="alert">{error}</p>}
 
+      {successMessage && (
+        <div className="card notice-banner success" style={{ marginBottom: "16px" }} role="status">
+          <h4 style={{ margin: "0 0 6px 0" }}>✓ {successMessage}</h4>
+          <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "var(--text-dim)" }}>
+            Restored files have been placed in their target directories with verified integrity.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => onNavigate && onNavigate("backups")}
+          >
+            Return to Backups
+          </button>
+        </div>
+      )}
+
       <div className="card">
         <h3>Snapshot: {snapshot.label}</h3>
         <dl className="details-list">
@@ -154,6 +169,7 @@ export default function BackupRestorePage({ snapshotId: propSnapshotId, onNaviga
                     <select
                       value={conflicts[conflict.relative_path] || "cancel"}
                       onChange={(e) => handleConflictChange(conflict.relative_path, e.target.value as RestoreConflictPolicy)}
+                      aria-label={`Conflict resolution policy for ${conflict.relative_path}`}
                     >
                       <option value="cancel">Cancel (skip)</option>
                       <option value="keep_existing">Keep Existing</option>
@@ -186,9 +202,9 @@ export default function BackupRestorePage({ snapshotId: propSnapshotId, onNaviga
         <button
           className="btn btn-primary"
           onClick={handleRestore}
-          disabled={restoring}
+          disabled={restoring || !!successMessage}
         >
-          {restoring ? "Restoring…" : "Start Restore"}
+          {restoring ? "Restoring…" : successMessage ? "Restored" : "Start Restore"}
         </button>
       </div>
     </section>

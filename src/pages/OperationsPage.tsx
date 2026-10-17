@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { api, formatDate } from "../api";
 import type { FileOperation, OperationItem } from "../types";
 
@@ -54,12 +54,13 @@ export default function OperationsPage() {
           </thead>
           <tbody>
             {ops.map((op) => (
-              <>
-                <tr key={op.id}>
+              <React.Fragment key={op.id}>
+                <tr>
                   <td>
                     <button
                       className="btn btn-ghost btn-small"
                       aria-expanded={openOpId === op.id}
+                      aria-label={`Toggle details for batch ${op.batch_id}`}
                       onClick={() => toggle(op.id)}
                     >
                       {openOpId === op.id ? "−" : "+"}
@@ -91,7 +92,7 @@ export default function OperationsPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             ))}
           </tbody>
         </table>

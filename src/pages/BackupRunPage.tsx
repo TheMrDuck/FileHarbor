@@ -101,8 +101,12 @@ export default function BackupRunPage({ runId: propRunId, onNavigate }: Props) {
 
   const loadRun = async () => {
     try {
-      // We need to get the run from the database
-      // For now, we'll use a placeholder - the actual implementation would query the DB
+      if (runId) {
+        const activeProgress = await api.getBackupProgress(runId);
+        if (activeProgress) {
+          setProgress(activeProgress);
+        }
+      }
       setLoading(false);
     } catch (e) {
       setError(String(e));
@@ -216,7 +220,7 @@ export default function BackupRunPage({ runId: propRunId, onNavigate }: Props) {
           <tbody>
             <tr><th>Run ID</th><td className="mono">{runId}</td></tr>
             <tr><th>Status</th><td>{currentStatus}</td></tr>
-            <tr><th>Started</th><td>{formatDate(run?.started_at_ms || 0)}</td></tr>
+            <tr><th>Started</th><td>{run?.started_at_ms ? formatDate(run.started_at_ms) : (progress ? "Active run" : "Just now")}</td></tr>
             <tr><th>Files Total</th><td className="mono">{run?.files_total?.toLocaleString() || progress?.files_total?.toLocaleString() || "0"}</td></tr>
             <tr><th>New Files</th><td className="mono">{run?.files_new?.toLocaleString() || "0"}</td></tr>
             <tr><th>Changed Files</th><td className="mono">{run?.files_changed?.toLocaleString() || "0"}</td></tr>

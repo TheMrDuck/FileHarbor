@@ -271,8 +271,10 @@ export default function TestDataPage({ onNavigateToScan }: Props) {
             <h3>1. Choose Scenario</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "12px" }}>
               <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                <label style={{ minWidth: "140px", fontWeight: 600 }}>Scenario:</label>
+                <label htmlFor="testgen-scenario-select" style={{ minWidth: "140px", fontWeight: 600 }}>Scenario:</label>
                 <select
+                  id="testgen-scenario-select"
+                  aria-label="Select test scenario"
                   value={selectedScenario}
                   onChange={(e) => setSelectedScenario(e.target.value)}
                   disabled={isGenerating}

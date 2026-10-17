@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { api } from "../api";
 import type { BackupRun, BackupSnapshot, BackupSet } from "../types";
 import { formatBytes, formatDate } from "../api";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 interface Props {
   setId?: number;
@@ -19,6 +20,8 @@ export default function BackupHistoryPage({ setId: propSetId, onNavigate }: Prop
   const [activeTab, setActiveTab] = useState<"runs" | "snapshots">("runs");
   const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([]);
   const [destination, setDestination] = useState<{ id: number; path: string; label: string | null; filesystem_id: string | null; created_at_ms: number; last_seen_at_ms: number | null } | null>(null);
+  const [confirmDeleteConfig, setConfirmDeleteConfig] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -68,8 +71,8 @@ export default function BackupHistoryPage({ setId: propSetId, onNavigate }: Prop
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm("Delete this backup set? This will remove the configuration but keep the backup data.")) return;
+  const executeDeleteConfig = async () => {
+    setConfirmDeleteConfig(false);
     try {
       await api.deleteBackupSet(setId, false);
       if (onNavigate) onNavigate("backups");
@@ -78,9 +81,8 @@ export default function BackupHistoryPage({ setId: propSetId, onNavigate }: Prop
     }
   };
 
-  const handleDeleteWithData = async () => {
-    if (!confirm("Delete this backup set AND all backup data? This cannot be undone!")) return;
-    if (!confirm("Are you absolutely sure? All backup files will be permanently deleted.")) return;
+  const executeDeleteAll = async () => {
+    setConfirmDeleteAll(false);
     try {
       await api.deleteBackupSet(setId, true);
       if (onNavigate) onNavigate("backups");
@@ -227,14 +229,36 @@ export default function BackupHistoryPage({ setId: propSetId, onNavigate }: Prop
         <h3>Danger Zone</h3>
         <p>These actions are irreversible.</p>
         <div className="danger-actions">
-          <button className="btn btn-danger" onClick={handleDelete}>
+          <button className="btn btn-danger" onClick={() => setConfirmDeleteConfig(true)}>
             Delete Configuration Only
           </button>
-          <button className="btn btn-danger btn-destructive" onClick={handleDeleteWithData}>
+          <button className="btn btn-danger btn-destructive" onClick={() => setConfirmDeleteAll(true)}>
             Delete Configuration & Data
           </button>
         </div>
       </div>
+
+      {confirmDeleteConfig && (
+        <ConfirmDialog
+          title="Delete Backup Configuration?"
+          body="Are you sure you want to delete this backup set configuration? The backup files already stored in the destination folder will remain intact."
+          confirmLabel="Delete Configuration"
+          danger
+          onCancel={() => setConfirmDeleteConfig(false)}
+          onConfirm={executeDeleteConfig}
+        />
+      )}
+
+      {confirmDeleteAll && (
+        <ConfirmDialog
+          title="Delete Configuration & Permanent Backup Data?"
+          body="WARNING: This will permanently erase the backup configuration and purge all snapshot files in the destination storage pool. This cannot be undone."
+          confirmLabel="Permanently Delete Everything"
+          danger
+          onCancel={() => setConfirmDeleteAll(false)}
+          onConfirm={executeDeleteAll}
+        />
+      )}
     </section>
   );
 }
