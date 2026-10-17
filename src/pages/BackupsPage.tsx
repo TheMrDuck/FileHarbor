@@ -110,7 +110,7 @@ export default function BackupsPage({ onNavigate }: Props) {
                     <td className="truncated">{s.source_path}</td>
                     <td className="truncated">{dest?.path || "Unknown"}</td>
                     <td><span className="badge">{s.schedule}</span></td>
-                    <td>{formatStatus(s.schedule)}</td>
+                    <td>{lastRun ? formatStatus(lastRun.status) : <span className="badge">idle</span>}</td>
                     <td>{lastRun ? formatDate(lastRun.started_at_ms) : "Never"}</td>
                     <td>
                       <button className="btn btn-ghost btn-small" onClick={() => onNavigate("backup-details", { setId: s.id })}>

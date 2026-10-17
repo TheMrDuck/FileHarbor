@@ -27,7 +27,6 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
   const [activeScope, setActiveScope] = useState<string>("all");
   const [triageSummary, setTriageSummary] = useState<AutoTriageSummary | null>(null);
   const [confirmingAutoTriage, setConfirmingAutoTriage] = useState(false);
-  const [globalSelection, setGlobalSelection] = useState(false);
   const [busyMergeId, setBusyMergeId] = useState<number | null>(null);
 
 
@@ -417,29 +416,21 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                flexWrap: "wrap",
+                gap: "8px",
               }}
             >
               <span>
-                {globalSelection
-                  ? `All ${totalGroups.toLocaleString()} duplicate groups across all ${Math.ceil(totalGroups / PAGE_SIZE)} pages are selected for action.`
-                  : `All ${groups.length} duplicate groups on this page are selected.`}
+                Selection applies to the <strong>{groups.length}</strong> duplicate groups on this page ({selIds.length} files).
+                To process all <strong>{totalGroups.toLocaleString()}</strong> groups across all {Math.ceil(totalGroups / PAGE_SIZE)} pages at once, use Executive Auto-Triage.
               </span>
               <button
                 type="button"
                 className="btn btn-ghost btn-small"
                 style={{ color: "var(--accent)", fontWeight: 600 }}
-                onClick={() => {
-                  if (!globalSelection) {
-                    setGlobalSelection(true);
-                    setConfirmingAutoTriage(true);
-                  } else {
-                    setGlobalSelection(false);
-                  }
-                }}
+                onClick={() => setConfirmingAutoTriage(true)}
               >
-                {globalSelection
-                  ? "Clear global selection"
-                  : `👉 Select all ${totalGroups.toLocaleString()} duplicate groups across all ${Math.ceil(totalGroups / PAGE_SIZE)} pages`}
+                ⚡ Open Executive Auto-Triage All ({formatBytes(triageSummary?.total_reclaimable_bytes ?? 0)})
               </button>
             </div>
           )}

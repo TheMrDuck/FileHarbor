@@ -125,20 +125,21 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults, ac
             Audit Depth & Profile:
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            <div
+            <label
               style={{
+                display: "block",
                 border: scanProfile === "standard" ? "2px solid var(--primary)" : "1px solid var(--border)",
                 background: scanProfile === "standard" ? "rgba(59, 130, 246, 0.08)" : "var(--bg)",
                 borderRadius: "var(--radius-sm)",
                 padding: "12px",
                 cursor: "pointer",
               }}
-              onClick={() => setScanProfile("standard")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
                 <input
                   type="radio"
                   name="scanProfile"
+                  value="standard"
                   checked={scanProfile === "standard"}
                   onChange={() => setScanProfile("standard")}
                 />
@@ -147,22 +148,23 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults, ac
               <p className="hint" style={{ margin: "6px 0 0 24px", fontSize: "12px" }}>
                 Fast byte-for-byte exact SHA-256 duplicates, empty files, and permission problems. Best for routine drive cleanup.
               </p>
-            </div>
+            </label>
 
-            <div
+            <label
               style={{
+                display: "block",
                 border: scanProfile === "deep" ? "2px solid var(--accent-deep)" : "1px solid var(--border)",
                 background: scanProfile === "deep" ? "var(--accent-deep-subtle)" : "var(--bg)",
                 borderRadius: "var(--radius-sm)",
                 padding: "12px",
                 cursor: "pointer",
               }}
-              onClick={() => setScanProfile("deep")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "var(--accent-deep-text)" }}>
                 <input
                   type="radio"
                   name="scanProfile"
+                  value="deep"
                   checked={scanProfile === "deep"}
                   onChange={() => setScanProfile("deep")}
                 />
@@ -171,7 +173,7 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults, ac
               <p className="hint" style={{ margin: "6px 0 0 24px", fontSize: "12px" }}>
                 Includes exact SHA-256 duplicates + photo perceptual hashes (pHash), document version lineages (SimHash), signature verification (.bin/.tmp), and recovery collisions.
               </p>
-            </div>
+            </label>
           </div>
         </div>
 
