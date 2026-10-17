@@ -103,6 +103,14 @@ pub fn quarantine_files(
                 continue;
             }
         };
+
+        // If the file is already stored in quarantine, treat it as already quarantined rather than failing
+        if store.is_path_quarantined(&record.path).unwrap_or(false) {
+            logutil::info("file_already_quarantined", &[("path", &record.path)]);
+            succeeded += 1;
+            continue;
+        }
+
         let item_row = store.insert_operation_item(
             op_id,
             Some(&record.path),
@@ -210,6 +218,12 @@ pub fn quarantine_paths(
         }
 
         let path_str = path_to_string(src_path);
+        if store.is_path_quarantined(&path_str).unwrap_or(false) {
+            logutil::info("file_already_quarantined", &[("path", &path_str)]);
+            succeeded += 1;
+            continue;
+        }
+
         if !src_path.is_file() {
             failed += 1;
             failures.push(FailedItem {

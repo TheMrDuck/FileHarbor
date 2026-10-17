@@ -509,6 +509,9 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
             bind_vals.push(Box::new(max as i64));
         }
 
+        // Exclude files currently stored in quarantine
+        where_clauses.push("path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')".to_string());
+
         let sort_col = match filter.sort.as_deref() {
             Some("name") => "file_name",
             Some("size") => "size_bytes",
@@ -657,7 +660,14 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     pub fn duplicate_group_count(&self, session_id: i64) -> Result<i64, String> {
         self.conn
             .query_row(
-                "SELECT COUNT(*) FROM duplicate_groups WHERE session_id = ?1",
+                "SELECT COUNT(*) FROM duplicate_groups g
+                 WHERE g.session_id = ?1
+                   AND (
+                     SELECT COUNT(*) FROM duplicate_members m
+                     JOIN file_records f ON f.id = m.file_id
+                     WHERE m.group_id = g.id
+                       AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+                   ) > 1",
                 params![session_id],
                 |r| r.get(0),
             )
@@ -674,8 +684,15 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id FROM duplicate_groups WHERE session_id = ?1
-                 ORDER BY size_bytes DESC, hash ASC LIMIT ?2 OFFSET ?3",
+                "SELECT g.id FROM duplicate_groups g
+                 WHERE g.session_id = ?1
+                   AND (
+                     SELECT COUNT(*) FROM duplicate_members m
+                     JOIN file_records f ON f.id = m.file_id
+                     WHERE m.group_id = g.id
+                       AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+                   ) > 1
+                 ORDER BY g.size_bytes DESC, g.hash ASC LIMIT ?2 OFFSET ?3",
             )
             .map_err(|e| e.to_string())?;
         let ids: Vec<i64> = stmt
@@ -699,7 +716,9 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                 .prepare(&format!(
                     "SELECT {FILE_COLS} FROM file_records f
                      JOIN duplicate_members m ON m.file_id = f.id
-                     WHERE m.group_id = ?1 ORDER BY f.path"
+                     WHERE m.group_id = ?1
+                       AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+                     ORDER BY f.path"
                 ))
                 .map_err(|e| e.to_string())?;
             let mut members = mstmt
@@ -1008,6 +1027,18 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
                 map_quarantine_item,
             )
             .map_err(|e| e.to_string())
+    }
+
+    pub fn is_path_quarantined(&self, original_path: &str) -> Result<bool, String> {
+        let count: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM quarantine_items WHERE original_path = ?1 AND status = 'stored'",
+                params![original_path],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(count > 0)
     }
 
     // ------------------------------------------------------------------

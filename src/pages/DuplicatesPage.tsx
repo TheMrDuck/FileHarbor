@@ -164,6 +164,7 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
           "error"
         );
       }
+      setSelected(new Map());
       setConfirming(null);
       await load(page);
     } catch (e) {

@@ -84,12 +84,14 @@ export default function EmptyFilesPage({ sessionId, showToast }: Props) {
   const doQuarantine = async () => {
     setBusy(true);
     try {
-      const { report } = await api.quarantineFiles([...selected]);
+      const toQuarantine = Array.from(selected);
+      const { report } = await api.quarantineFiles(toQuarantine);
       if (report.failed === 0) {
         showToast(`Moved ${report.succeeded} empty file(s) to quarantine.`);
       } else {
         showToast(`Moved ${report.succeeded}, failed ${report.failed}.`, "error");
       }
+      setSelected(new Set());
       setConfirming(false);
       await load(page);
     } catch (e) {

@@ -62,6 +62,17 @@ fn quarantine_moves_file_and_records_operation() {
     assert_eq!(op_items.len(), 1);
     assert_eq!(op_items[0].status, OpItemStatus::Completed);
 
+    // Quarantined file must be excluded from list_files and count
+    let page_after = s
+        .list_files(session, &FileFilter { limit: 10, ..Default::default() })
+        .unwrap();
+    assert_eq!(page_after.items.len(), 0, "quarantined file must not be returned by list_files");
+    assert_eq!(page_after.total, 0, "quarantined file must not be counted in total");
+
+    // Repeat quarantine call on already-quarantined file must succeed gracefully
+    let res_again = quarantine::quarantine_files(&s, &[rec.id], &_guard.path().join("Quarantine"), &CancelToken::new()).unwrap();
+    assert_eq!(res_again.report.failed, 0, "already quarantined file must not cause a failure");
+
     let _ = fs::remove_dir_all(root);
 }
 
