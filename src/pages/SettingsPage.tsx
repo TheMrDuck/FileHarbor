@@ -442,7 +442,7 @@ export default function SettingsPage() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <div>
-                  <strong style={{ fontSize: "15px", color: "#60a5fa" }}>
+                  <strong style={{ fontSize: "15px", color: "var(--focus)" }}>
                     🚀 New Release Available: {updateInfo.latest_version}
                   </strong>
                   <div className="hint" style={{ marginTop: "2px" }}>
@@ -504,7 +504,6 @@ export default function SettingsPage() {
                         height: "100%",
                         width: `${downloadProgress?.percentage ?? 0}%`,
                         background: "var(--primary)",
-                        transition: "width 0.2s ease",
                       }}
                     />
                   </div>

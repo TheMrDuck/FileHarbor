@@ -328,15 +328,23 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", gap: "8px", margin: "16px 0", flexWrap: "wrap", alignItems: "center" }}>
+          <div
+            role="tablist"
+            aria-label="Duplicate group scopes"
+            style={{ display: "flex", gap: "8px", margin: "16px 0", flexWrap: "wrap", alignItems: "center" }}
+          >
             <span style={{ fontSize: "13px", color: "var(--text-dim)", fontWeight: 600, marginRight: "4px" }}>Scope View:</span>
             <button
+              role="tab"
+              aria-selected={activeScope === "all"}
               className={`btn btn-small ${activeScope === "all" ? "btn-primary" : "btn-secondary"}`}
               onClick={() => { setActiveScope("all"); load(0, "all"); }}
             >
               All Groups ({triageSummary?.total_groups.toLocaleString() ?? totalGroups})
             </button>
             <button
+              role="tab"
+              aria-selected={activeScope === "personal"}
               className={`btn btn-small ${activeScope === "personal" ? "btn-primary" : "btn-secondary"}`}
               onClick={() => { setActiveScope("personal"); load(0, "personal"); }}
               title="Only show personal files: Downloads, Photos, Documents, Videos"
@@ -344,6 +352,8 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
               📁 Personal & Media ({triageSummary?.personal_media_groups.toLocaleString() ?? 0})
             </button>
             <button
+              role="tab"
+              aria-selected={activeScope === "heavy"}
               className={`btn btn-small ${activeScope === "heavy" ? "btn-primary" : "btn-secondary"}`}
               onClick={() => { setActiveScope("heavy"); load(0, "heavy"); }}
               title="High-impact duplicate groups larger than 50 MB"
@@ -351,6 +361,8 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
               📦 Heavy Files &gt;50MB ({triageSummary?.heavy_file_groups.toLocaleString() ?? 0})
             </button>
             <button
+              role="tab"
+              aria-selected={activeScope === "caches"}
               className={`btn btn-small ${activeScope === "caches" ? "btn-primary" : "btn-secondary"}`}
               onClick={() => { setActiveScope("caches"); load(0, "caches"); }}
               title="Unity PackageCache, node_modules, and git object duplicates"

@@ -38,31 +38,37 @@ export default function QuarantinePage({ showToast }: Props) {
       if (retStatus) setRetention(retStatus);
       setSelected(new Set());
       
-      // Check backup status for each item
+      // Check backup status concurrently in bounded batches
       const statusMap = new Map<number, BackupStatusInfo>();
-      for (const item of quarantineItems) {
-        try {
-          const backupInfo = await api.checkFileBackupStatus(item.original_path);
-          if (backupInfo) {
-            statusMap.set(item.id, {
-              hasBackup: true,
-              backupSetName: backupInfo[0],
-              snapshotLabel: backupInfo[1],
-            });
-          } else {
-            statusMap.set(item.id, {
-              hasBackup: false,
-              backupSetName: "",
-              snapshotLabel: "",
-            });
-          }
-        } catch {
-          statusMap.set(item.id, {
-            hasBackup: false,
-            backupSetName: "",
-            snapshotLabel: "",
-          });
-        }
+      const BATCH_SIZE = 24;
+      for (let i = 0; i < quarantineItems.length; i += BATCH_SIZE) {
+        const batch = quarantineItems.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (item) => {
+            try {
+              const backupInfo = await api.checkFileBackupStatus(item.original_path);
+              if (backupInfo) {
+                statusMap.set(item.id, {
+                  hasBackup: true,
+                  backupSetName: backupInfo[0],
+                  snapshotLabel: backupInfo[1],
+                });
+              } else {
+                statusMap.set(item.id, {
+                  hasBackup: false,
+                  backupSetName: "",
+                  snapshotLabel: "",
+                });
+              }
+            } catch {
+              statusMap.set(item.id, {
+                hasBackup: false,
+                backupSetName: "",
+                snapshotLabel: "",
+              });
+            }
+          })
+        );
       }
       setBackupStatus(statusMap);
     } finally {

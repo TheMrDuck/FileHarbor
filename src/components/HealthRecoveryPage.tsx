@@ -376,38 +376,62 @@ export const HealthRecoveryPage: React.FC<HealthRecoveryPageProps> = ({ initialF
       </div>
 
       {/* Tabs */}
-      <div className="tabs" style={{ display: "flex", gap: "8px" }}>
+      <div className="tabs" role="tablist" aria-label="File Health and Recovery Inspection Modes" style={{ display: "flex", gap: "8px" }}>
         <button
+          role="tab"
+          id="tab-collisions"
+          aria-selected={activeTab === "collisions"}
+          aria-controls="panel-collisions"
           className={activeTab === "collisions" ? "btn btn-primary" : "btn btn-secondary"}
           onClick={() => { setActiveTab("collisions"); setStatusMessage(null); }}
         >
           Recovery Collisions
         </button>
         <button
+          role="tab"
+          id="tab-rectifier"
+          aria-selected={activeTab === "rectifier"}
+          aria-controls="panel-rectifier"
           className={activeTab === "rectifier" ? "btn btn-primary" : "btn btn-secondary"}
           onClick={() => { setActiveTab("rectifier"); setStatusMessage(null); }}
         >
           Signature Rectifier (Unknown Files)
         </button>
         <button
+          role="tab"
+          id="tab-near-dupes"
+          aria-selected={activeTab === "near-dupes"}
+          aria-controls="panel-near-dupes"
           className={activeTab === "near-dupes" ? "btn btn-primary" : "btn btn-secondary"}
           onClick={() => { setActiveTab("near-dupes"); setStatusMessage(null); }}
         >
           Near-Duplicate Photos (pHash)
         </button>
         <button
+          role="tab"
+          id="tab-reconstruction"
+          aria-selected={activeTab === "reconstruction"}
+          aria-controls="panel-reconstruction"
           className={activeTab === "reconstruction" ? "btn btn-primary" : "btn btn-secondary"}
           onClick={() => { setActiveTab("reconstruction"); setStatusMessage(null); }}
         >
           Multi-Copy Reconstruction
         </button>
         <button
+          role="tab"
+          id="tab-doc-lineage"
+          aria-selected={activeTab === "doc-lineage"}
+          aria-controls="panel-doc-lineage"
           className={activeTab === "doc-lineage" ? "btn btn-primary" : "btn btn-secondary"}
           onClick={() => { setActiveTab("doc-lineage"); setStatusMessage(null); }}
         >
           Document Lineage & Drafts (SimHash)
         </button>
         <button
+          role="tab"
+          id="tab-carving"
+          aria-selected={activeTab === "carving"}
+          aria-controls="panel-carving"
           className={activeTab === "carving" ? "btn btn-primary" : "btn btn-secondary"}
           onClick={() => { setActiveTab("carving"); setStatusMessage(null); }}
         >
@@ -531,8 +555,8 @@ export const HealthRecoveryPage: React.FC<HealthRecoveryPageProps> = ({ initialF
               disabled={loading || loadingAll || !folderPath.trim()}
               className="btn btn-secondary"
               style={{
-                borderColor: "#6366f1",
-                color: "#818cf8",
+                borderColor: "var(--accent-deep-border)",
+                color: "var(--accent-deep-text)",
                 fontWeight: 600,
                 whiteSpace: "nowrap",
               }}
@@ -565,7 +589,7 @@ export const HealthRecoveryPage: React.FC<HealthRecoveryPageProps> = ({ initialF
                   cursor: "pointer",
                   border: "none",
                   background: pairs.length > 0 ? "rgba(239, 68, 68, 0.15)" : "var(--bg)",
-                  color: pairs.length > 0 ? "var(--error)" : "var(--text-muted)",
+                  color: pairs.length > 0 ? "var(--danger)" : "var(--text-muted)",
                 }}
                 onClick={() => setActiveTab("collisions")}
               >
@@ -591,7 +615,7 @@ export const HealthRecoveryPage: React.FC<HealthRecoveryPageProps> = ({ initialF
                   cursor: "pointer",
                   border: "none",
                   background: clusters.length > 0 ? "rgba(59, 130, 246, 0.15)" : "var(--bg)",
-                  color: clusters.length > 0 ? "#60a5fa" : "var(--text-muted)",
+                  color: clusters.length > 0 ? "var(--focus)" : "var(--text-muted)",
                 }}
                 onClick={() => setActiveTab("near-dupes")}
               >
@@ -603,8 +627,8 @@ export const HealthRecoveryPage: React.FC<HealthRecoveryPageProps> = ({ initialF
                 style={{
                   cursor: "pointer",
                   border: "none",
-                  background: docClusters.length > 0 ? "rgba(139, 92, 246, 0.15)" : "var(--bg)",
-                  color: docClusters.length > 0 ? "#a78bfa" : "var(--text-muted)",
+                  background: docClusters.length > 0 ? "var(--accent-deep-subtle)" : "var(--bg)",
+                  color: docClusters.length > 0 ? "var(--accent-deep-text)" : "var(--text-muted)",
                 }}
                 onClick={() => setActiveTab("doc-lineage")}
               >

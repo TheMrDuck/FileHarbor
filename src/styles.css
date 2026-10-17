@@ -17,6 +17,11 @@
   --success: #10b981;
   --warning: #f59e0b;
   --focus: #60a5fa;
+  --accent-deep: #6366f1;
+  --accent-deep-hover: #4f46e5;
+  --accent-deep-subtle: rgba(99, 102, 241, 0.12);
+  --accent-deep-border: rgba(99, 102, 241, 0.28);
+  --accent-deep-text: #818cf8;
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -447,6 +452,43 @@ button.stat-card:focus-visible {
   padding: 6px 12px;
   min-height: 34px;
   font-size: 12px;
+  position: relative;
+}
+
+.btn-small::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+}
+
+@media (pointer: coarse) {
+  .btn-small {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
+
+.card-deep-audit {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(59, 130, 246, 0.08));
+  border: 1px solid var(--accent-deep-border);
+}
+
+.text-deep-accent {
+  color: var(--accent-deep-text);
+}
+
+.btn-deep-accent {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #ffffff;
+}
+
+.btn-deep-accent:hover:not(:disabled) {
+  background: var(--accent-deep-hover);
+  border-color: var(--accent-deep-hover);
 }
 
 :focus-visible {
@@ -1015,9 +1057,11 @@ tbody tr:hover {
 
 .scan-progress-fill {
   height: 100%;
+  width: 100%;
   background: linear-gradient(90deg, #2563eb 0%, #38bdf8 100%);
   border-radius: 999px;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: left;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
 
@@ -1792,10 +1836,20 @@ tbody tr:hover {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001s !important;
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.05s !important;
+    transition-duration: 0.12s !important;
     scroll-behavior: auto !important;
+  }
+
+  /* Preserve gentle opacity feedback without disorienting layout motion */
+  .modal,
+  .overlay-backdrop,
+  .btn,
+  .nav-link,
+  .stat-card {
+    transition: opacity 0.12s linear, background-color 0.12s linear !important;
+    transform: none !important;
   }
 
   .btn-destructive {

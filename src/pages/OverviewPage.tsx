@@ -70,17 +70,10 @@ export default function OverviewPage({ sessionId, onNavigate }: Props) {
         </button>
       </div>
 
-      <div
-        className="card"
-        style={{
-          marginTop: "16px",
-          background: "linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(59, 130, 246, 0.08))",
-          border: "1px solid rgba(99, 102, 241, 0.25)",
-        }}
-      >
+      <div className="card card-deep-audit" style={{ marginTop: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px 0", color: "#818cf8" }}>⚡ Comprehensive Deep Health & Recovery Audit</h3>
+            <h3 className="text-deep-accent" style={{ margin: "0 0 4px 0" }}>⚡ Comprehensive Deep Health & Recovery Audit</h3>
             <p className="hint" style={{ margin: 0, fontSize: "13px" }}>
               Run deep perceptual photo checks (pHash), document version lineages (SimHash), signature verification (.bin/.tmp), corrupted recovery collisions, and EXIF metadata extraction on scanned targets.
             </p>
@@ -95,8 +88,7 @@ export default function OverviewPage({ sessionId, onNavigate }: Props) {
             </button>
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ background: "#6366f1", borderColor: "#6366f1" }}
+              className="btn btn-deep-accent"
               onClick={() => onNavigate("health-recovery", { folder: primaryRoot })}
             >
               Open Deep Audit Hub →

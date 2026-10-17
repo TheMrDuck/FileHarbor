@@ -277,8 +277,8 @@ export default function App() {
             style={{
               margin: "12px 10px 4px",
               padding: "10px 12px",
-              background: "linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15))",
-              border: "1px solid rgba(59, 130, 246, 0.3)",
+              background: "linear-gradient(135deg, var(--accent-subtle), var(--accent-deep-subtle))",
+              border: "1px solid var(--accent-deep-border)",
               borderRadius: "8px",
               cursor: "pointer",
             }}
@@ -286,8 +286,8 @@ export default function App() {
             title="Click to open Settings and download update"
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
-              <span style={{ color: "#60a5fa", fontWeight: 600, fontSize: "12px" }}>🚀 Update Ready</span>
-              <span className="badge" style={{ fontSize: "10px", background: "#3b82f6", color: "#fff", padding: "1px 6px" }}>
+              <span style={{ color: "var(--focus)", fontWeight: 600, fontSize: "12px" }}>🚀 Update Ready</span>
+              <span className="badge" style={{ fontSize: "10px", background: "var(--accent)", color: "#fff", padding: "1px 6px" }}>
                 {updateAvailable.latest_version}
               </span>
             </div>
@@ -431,7 +431,7 @@ export default function App() {
               <div className="scan-progress-track">
                 <div
                   className={`scan-progress-fill ${currentPhaseKey === "discovering" ? "pulse-shimmer" : ""}`}
-                  style={{ width: `${progressPercent}%` }}
+                  style={{ transform: `scaleX(${progressPercent / 100})` }}
                 >
                   <div className="scan-progress-glow" />
                 </div>

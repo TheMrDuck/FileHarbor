@@ -151,15 +151,15 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults, ac
 
             <div
               style={{
-                border: scanProfile === "deep" ? "2px solid #6366f1" : "1px solid var(--border)",
-                background: scanProfile === "deep" ? "rgba(99, 102, 241, 0.08)" : "var(--bg)",
+                border: scanProfile === "deep" ? "2px solid var(--accent-deep)" : "1px solid var(--border)",
+                background: scanProfile === "deep" ? "var(--accent-deep-subtle)" : "var(--bg)",
                 borderRadius: "var(--radius-sm)",
                 padding: "12px",
                 cursor: "pointer",
               }}
               onClick={() => setScanProfile("deep")}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#818cf8" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "var(--accent-deep-text)" }}>
                 <input
                   type="radio"
                   name="scanProfile"
