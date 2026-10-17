@@ -106,3 +106,39 @@ pub fn is_excluded(candidate: &Path, normalized_exclusions: &[String]) -> bool {
         lower == *ex || lower.starts_with(ex) && matches!(lower.as_bytes().get(ex.len()), Some(b'\\') | Some(b'/'))
     })
 }
+
+/// Consolidate a duplicate file into a filesystem hardlink pointing to the original canonical file.
+/// If successful, the duplicate path remains fully accessible to the OS and applications,
+/// but physical disk consumption for the duplicate is reduced to zero bytes.
+pub fn consolidate_as_hardlink(original: &Path, duplicate: &Path) -> Result<(), String> {
+    if !original.exists() {
+        return Err(format!("Original file does not exist: {}", original.display()));
+    }
+    if !duplicate.exists() {
+        return Err(format!("Duplicate file does not exist: {}", duplicate.display()));
+    }
+    if original == duplicate {
+        return Ok(());
+    }
+    let parent = duplicate.parent().ok_or_else(|| "Duplicate file has no parent directory".to_string())?;
+    let temp_name = format!(".tmp_hlink_{}.tmp", uuid::Uuid::new_v4());
+    let temp_link = parent.join(temp_name);
+
+    // Attempt hardlink at temporary path first (verifies same volume & permissions)
+    fs::hard_link(original, &temp_link).map_err(|e| {
+        format!("Hardlink creation failed (cross-volume hardlinks are not supported by OS): {e}")
+    })?;
+
+    // Safely replace duplicate with the hardlink
+    if let Err(e) = fs::remove_file(duplicate) {
+        let _ = fs::remove_file(&temp_link);
+        return Err(format!("Failed to remove duplicate prior to hardlink swap: {e}"));
+    }
+
+    if let Err(e) = fs::rename(&temp_link, duplicate) {
+        return Err(format!("Failed to place hardlink at destination: {e}"));
+    }
+
+    Ok(())
+}
+

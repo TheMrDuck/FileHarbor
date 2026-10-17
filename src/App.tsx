@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, PHASE_LABELS } from "./api";
-import type { ScanFinished, ScanProgress } from "./types";
+import type { ScanFinished, ScanProgress, UpdateCheckResult } from "./types";
 import ConfirmDialog from "./components/ConfirmDialog";
 import { NavIcon } from "./components/NavIcons";
 import NewScanPage from "./pages/NewScanPage";
@@ -69,10 +69,24 @@ export default function App() {
   const [activeBackupRunId, setActiveBackupRunId] = useState<number | null>(null);
   const [activeSnapshotId, setActiveSnapshotId] = useState<number | null>(null);
   const [initialScanRoots, setInitialScanRoots] = useState<string[] | undefined>(undefined);
+  const [selectedAuditFolder, setSelectedAuditFolder] = useState<string>("");
+  const [updateAvailable, setUpdateAvailable] = useState<UpdateCheckResult | null>(null);
   const [scan, setScan] = useState<ScanState | null>(null);
   const [scanElapsedSeconds, setScanElapsedSeconds] = useState(0);
   const [finishedNotice, setFinishedNotice] = useState<ScanFinished | null>(null);
   const [toast, setToast] = useState<{ text: string; kind: "info" | "error" } | null>(null);
+
+  useEffect(() => {
+    api.checkForUpdates()
+      .then((res) => {
+        if (res.has_update) {
+          setUpdateAvailable(res);
+        }
+      })
+      .catch(() => {
+        // Air-gapped or offline - ignore silently
+      });
+  }, []);
 
   useEffect(() => {
     if (!scan) {
@@ -87,11 +101,12 @@ export default function App() {
 
   const navigateTo = (
     targetPage: Page,
-    opts?: { setId?: number; runId?: number; snapshotId?: number }
+    opts?: { setId?: number; runId?: number; snapshotId?: number; folder?: string }
   ) => {
     if (opts?.setId !== undefined) setActiveBackupSetId(opts.setId);
     if (opts?.runId !== undefined) setActiveBackupRunId(opts.runId);
     if (opts?.snapshotId !== undefined) setActiveSnapshotId(opts.snapshotId);
+    if (opts?.folder !== undefined) setSelectedAuditFolder(opts.folder);
     setPage(targetPage);
   };
 
@@ -257,6 +272,30 @@ export default function App() {
             </div>
           ))}
         </div>
+        {updateAvailable && (
+          <div
+            style={{
+              margin: "12px 10px 4px",
+              padding: "10px 12px",
+              background: "linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15))",
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              borderRadius: "8px",
+              cursor: "pointer",
+            }}
+            onClick={() => setPage("settings")}
+            title="Click to open Settings and download update"
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+              <span style={{ color: "#60a5fa", fontWeight: 600, fontSize: "12px" }}>🚀 Update Ready</span>
+              <span className="badge" style={{ fontSize: "10px", background: "#3b82f6", color: "#fff", padding: "1px 6px" }}>
+                {updateAvailable.latest_version}
+              </span>
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+              Install new release via Settings →
+            </div>
+          </div>
+        )}
         <p className="sidebar-note">
           File organization, exact duplicate detection, and verified backups.
           Nothing is ever deleted without your explicit confirmation.
@@ -274,7 +313,10 @@ export default function App() {
             />
           )}
           {page === "overview" && activeSessionId !== null && (
-            <OverviewPage sessionId={activeSessionId} onNavigate={(p) => setPage(p)} />
+            <OverviewPage
+              sessionId={activeSessionId}
+              onNavigate={(p, opts) => navigateTo(p as Page, opts)}
+            />
           )}
           {page === "duplicates" && activeSessionId !== null && (
             <DuplicatesPage sessionId={activeSessionId} showToast={showToast} />
@@ -336,7 +378,9 @@ export default function App() {
             />
           )}
           {page === "triage" && <FolderTriagePage />}
-          {page === "health-recovery" && <HealthRecoveryPage />}
+          {page === "health-recovery" && (
+            <HealthRecoveryPage initialFolderPath={selectedAuditFolder} />
+          )}
         </Suspense>
       </main>
 

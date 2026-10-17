@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api } from "../api";
+import { listen } from "@tauri-apps/api/event";
+import { api, formatBytes } from "../api";
 import { IconShield, IconLock } from "../components/NavIcons";
-import type { BackupSchedule, RetentionPolicy, VerificationMode, PrivacyAuditResult } from "../types";
+import type { BackupSchedule, RetentionPolicy, VerificationMode, PrivacyAuditResult, UpdateCheckResult } from "../types";
 
 interface Exclusion {
   id: number;
@@ -25,6 +26,13 @@ export default function SettingsPage() {
   const [defaultSchedule, setDefaultSchedule] = useState<BackupSchedule>("manual");
   const [defaultRetentionPolicy, setDefaultRetentionPolicy] = useState<RetentionPolicy>("keep_all");
 
+  // Software update state
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ downloaded: number; total: number; percentage: number } | null>(null);
+
   useEffect(() => {
     api.settings().then((s) => {
       setDefaultLocation(s.default_scan_location ?? "");
@@ -39,7 +47,42 @@ export default function SettingsPage() {
     });
     api.getPrivacyAudit().then(setPrivacyAudit).catch(console.error);
     refreshExclusions();
+
+    const unlistenProgress = listen<{ downloaded: number; total: number; percentage: number }>(
+      "update-download-progress",
+      (event) => {
+        setDownloadProgress(event.payload);
+      }
+    );
+    return () => {
+      unlistenProgress.then((f) => f());
+    };
   }, []);
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const res = await api.checkForUpdates();
+      setUpdateInfo(res);
+    } catch (err) {
+      setUpdateError(String(err));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleDownloadAndInstall = async () => {
+    if (!updateInfo?.asset_url) return;
+    setDownloadingUpdate(true);
+    setUpdateError(null);
+    try {
+      await api.downloadAndInstallUpdate(updateInfo.asset_url);
+    } catch (err) {
+      setUpdateError(String(err));
+      setDownloadingUpdate(false);
+    }
+  };
 
   const refreshExclusions = () => {
     api.exclusions().then((rows) =>
@@ -228,20 +271,26 @@ export default function SettingsPage() {
       </div>
 
       <div className="card">
-        <h3>Quarantine</h3>
+        <h3>Quarantine & Retention Window (Option C)</h3>
+        <p className="hint" style={{ marginTop: "4px", marginBottom: "12px" }}>
+          FileHarbor utilizes a 30-Day Safe Retention Window (Option C). Files moved during 1-click Auto-Triage or manual deduplication are never permanently deleted automatically. They are held in Quarantine where they remain 100% restorable.
+        </p>
+
         <label className="field">
-          Retention reminder after (days): {retentionDays}
-          <input
-            type="range"
-            min={7}
-            max={365}
-            step={1}
+          Safety Retention Buffer:
+          <select
             value={retentionDays}
             onChange={(e) => setRetentionDays(Number(e.target.value))}
-          />
-          <span className="hint">
-            Phase 1 never deletes quarantined files automatically: this only
-            controls a future cleanup reminder.
+            style={{ maxWidth: "340px", marginTop: "4px" }}
+          >
+            <option value={14}>14 Days (Short Safety Buffer)</option>
+            <option value={30}>30 Days (Recommended - Option C Standard)</option>
+            <option value={60}>60 Days (Extended Protection)</option>
+            <option value={90}>90 Days (Quarterly Audit)</option>
+            <option value={180}>180 Days (Half-Year Vault)</option>
+          </select>
+          <span className="hint" style={{ marginTop: "6px" }}>
+            After {retentionDays} days in quarantine, files are flagged with an executive 1-click purge prompt. No permanent deletion occurs without your direct confirmation.
           </span>
         </label>
       </div>
@@ -323,6 +372,149 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Software Updates</h3>
+            <p className="hint" style={{ marginTop: "4px", marginBottom: "0" }}>
+              Check GitHub for the latest FileHarbor releases, security improvements, and optimizations.
+            </p>
+          </div>
+          <span
+            className="badge"
+            style={{
+              fontSize: "12px",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              padding: "4px 8px",
+            }}
+          >
+            Installed: v0.2.0
+          </span>
+        </div>
+
+        <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div className="row" style={{ alignItems: "center", gap: "10px" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleCheckForUpdates}
+              disabled={checkingUpdate || downloadingUpdate}
+            >
+              {checkingUpdate ? "Checking GitHub..." : "Check for Updates"}
+            </button>
+            {updateInfo && !updateInfo.has_update && (
+              <span
+                style={{
+                  color: "var(--success)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                ✓ You are using the latest version of FileHarbor ({updateInfo.current_version})
+              </span>
+            )}
+          </div>
+
+          {updateError && (
+            <p className="form-error" role="alert" style={{ margin: 0 }}>
+              {updateError}
+            </p>
+          )}
+
+          {updateInfo?.has_update && (
+            <div
+              style={{
+                background: "rgba(59, 130, 246, 0.08)",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+                borderRadius: "var(--radius-sm)",
+                padding: "16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                <div>
+                  <strong style={{ fontSize: "15px", color: "#60a5fa" }}>
+                    🚀 New Release Available: {updateInfo.latest_version}
+                  </strong>
+                  <div className="hint" style={{ marginTop: "2px" }}>
+                    {updateInfo.asset_name ? `${updateInfo.asset_name} · ` : ""}
+                    {updateInfo.asset_size_bytes ? formatBytes(updateInfo.asset_size_bytes) : ""}
+                  </div>
+                </div>
+                {!downloadingUpdate && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleDownloadAndInstall}
+                    disabled={!updateInfo.asset_url}
+                  >
+                    Download & Install Update
+                  </button>
+                )}
+              </div>
+
+              {updateInfo.release_notes && (
+                <div
+                  style={{
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "4px",
+                    padding: "10px 12px",
+                    maxHeight: "140px",
+                    overflowY: "auto",
+                    fontSize: "12px",
+                    color: "var(--text-muted)",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  <strong style={{ display: "block", marginBottom: "4px", color: "var(--text)" }}>Release Notes:</strong>
+                  {updateInfo.release_notes}
+                </div>
+              )}
+
+              {downloadingUpdate && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
+                    <span>Downloading update from GitHub...</span>
+                    <span>
+                      {downloadProgress
+                        ? `${formatBytes(downloadProgress.downloaded)} / ${formatBytes(downloadProgress.total)} (${Math.round(downloadProgress.percentage)}%)`
+                        : "Connecting..."}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      height: "8px",
+                      background: "var(--border)",
+                      borderRadius: "4px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${downloadProgress?.percentage ?? 0}%`,
+                        background: "var(--primary)",
+                        transition: "width 0.2s ease",
+                      }}
+                    />
+                  </div>
+                  <span className="hint" style={{ fontSize: "11px" }}>
+                    Once finished, FileHarbor will launch the update installer automatically.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

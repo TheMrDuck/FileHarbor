@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, formatBytes, formatDate } from "../api";
 import { IconShield, IconLightbulb, IconAlert, NavIcon } from "../components/NavIcons";
-import type { DuplicateGroup } from "../types";
+import type { DuplicateGroup, AutoTriageSummary } from "../types";
 import { groupReclaimable } from "../types";
 
 interface Props {
@@ -24,6 +24,12 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
   const [busy, setBusy] = useState(false);
   const [activeExplanation, setActiveExplanation] = useState<import("../types").DuplicateExplanation | null>(null);
   const [loadingExplanation, setLoadingExplanation] = useState<boolean>(false);
+  const [activeScope, setActiveScope] = useState<string>("all");
+  const [triageSummary, setTriageSummary] = useState<AutoTriageSummary | null>(null);
+  const [confirmingAutoTriage, setConfirmingAutoTriage] = useState(false);
+  const [globalSelection, setGlobalSelection] = useState(false);
+  const [busyMergeId, setBusyMergeId] = useState<number | null>(null);
+
 
   const handleOpenWhy = async (groupId: number) => {
     setLoadingExplanation(true);
@@ -40,15 +46,16 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
   const PAGE_SIZE = 25;
 
   const load = useCallback(
-    async (p: number) => {
+    async (p: number, scope = activeScope) => {
       setLoading(true);
       try {
-        const res = await api.duplicateGroups(sessionId, p);
+        const [res, summary] = await Promise.all([
+          api.duplicateGroups(sessionId, p, scope === "all" ? undefined : scope),
+          api.getAutoTriageSummary(sessionId).catch(() => null),
+        ]);
         setGroups(res.items);
         setTotalGroups(res.total);
-        // Safe default selection:
-        // If files are cross-project (e.g. server.jar across servers) or internal VCS,
-        // leave them unselected by default to prevent breaking working instances!
+        if (summary) setTriageSummary(summary);
         const next = new Map<number, Set<number>>();
         for (const g of res.items) {
           if (g.is_cross_project) {
@@ -70,12 +77,63 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
         setLoading(false);
       }
     },
-    [sessionId]
+    [sessionId, activeScope]
   );
 
   useEffect(() => {
-    load(0);
-  }, [load]);
+    load(0, "all");
+  }, [sessionId]);
+
+  const handleApproveAutoTriage = async () => {
+    setBusy(true);
+    try {
+      const { report } = await api.applyAutoTriageQuarantine(sessionId, true, true, true);
+      if (report.failed === 0) {
+        showToast(`Successfully moved ${report.succeeded} duplicate files to Quarantine. 30-day retention active.`);
+      } else {
+        showToast(`Moved ${report.succeeded}, failed ${report.failed}. Failed files remained in place.`, "error");
+      }
+      setConfirmingAutoTriage(false);
+      setSelected(new Map());
+      await load(0, activeScope);
+    } catch (e) {
+      showToast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleHardlinkMerge = async (groupId: number) => {
+    setBusyMergeId(groupId);
+    try {
+      const report = await api.hardlinkMergeGroup(groupId);
+      if (report.merged_paths.length > 0) {
+        showToast(`Merged ${report.merged_paths.length} copy(s) into hardlinks! Reclaimed ${formatBytes(report.bytes_saved)}.`);
+      }
+      if (report.failed_paths.length > 0) {
+        showToast(`Notice: ${report.failed_paths.length} file(s) could not be hardlinked (likely on another drive).`, "error");
+      }
+      await load(page, activeScope);
+    } catch (e) {
+      showToast(`Merge failed: ${String(e)}`, "error");
+    } finally {
+      setBusyMergeId(null);
+    }
+  };
+
+  const handleWhitelistCaches = async () => {
+    const commonCaches = ["Library/PackageCache", "node_modules", ".git", "target/release", "target/debug"];
+    try {
+      for (const c of commonCaches) {
+        await api.addExclusion(c);
+      }
+      showToast("Added development cache patterns to exclusion list.");
+      await load(0, activeScope);
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  };
+
 
   const toggleFile = (groupId: number, fileId: number) => {
     const group = groups.find((g) => g.id === groupId);
@@ -186,16 +244,134 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
         </span>
       </div>
 
+      {triageSummary && triageSummary.total_groups > 0 && (
+        <div
+          className="card auto-triage-hub"
+          style={{
+            background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)",
+            border: "1px solid rgba(59, 130, 246, 0.3)",
+            borderRadius: "12px",
+            padding: "20px",
+            marginBottom: "20px",
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "20px" }}>⚡</span>
+                <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--text-bright)" }}>
+                  Executive 1-Click Auto-Triage
+                </h3>
+                <span className="badge badge-accent" style={{ background: "rgba(59, 130, 246, 0.2)", color: "#60a5fa" }}>
+                  High-Scale Automation
+                </span>
+              </div>
+              <p style={{ margin: "8px 0 16px 0", color: "var(--text-dim)", fontSize: "14px" }}>
+                FileHarbor analyzed all <strong>{triageSummary.total_groups.toLocaleString()}</strong> duplicate groups. 
+                You don't need to manually review {Math.max(1, Math.ceil(triageSummary.total_groups / PAGE_SIZE))} pages — 
+                approve the safe triage plan with 1 click.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="btn btn-primary"
+                style={{ padding: "10px 18px", fontSize: "14px", fontWeight: 700, boxShadow: "0 0 15px rgba(59, 130, 246, 0.35)" }}
+                onClick={() => setConfirmingAutoTriage(true)}
+                disabled={busy || triageSummary.recommended_quarantine_count === 0}
+              >
+                ✅ Approve & Quarantine All ({formatBytes(triageSummary.total_reclaimable_bytes)})
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginTop: "12px" }}>
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "12px 16px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Originals Preserved</div>
+              <div style={{ fontSize: "20px", fontWeight: 700, color: "#34d399", marginTop: "4px" }}>
+                {triageSummary.recommended_keep_count.toLocaleString()} files
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>Canonical copies kept</div>
+            </div>
+
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "12px 16px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>To Quarantine</div>
+              <div style={{ fontSize: "20px", fontWeight: 700, color: "#60a5fa", marginTop: "4px" }}>
+                {triageSummary.recommended_quarantine_count.toLocaleString()} files
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>{formatBytes(triageSummary.total_reclaimable_bytes)} reclaimable</div>
+            </div>
+
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "12px 16px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Runtimes Protected</div>
+              <div style={{ fontSize: "20px", fontWeight: 700, color: "#fbbf24", marginTop: "4px" }}>
+                {(triageSummary.protected_cross_project_count + triageSummary.protected_vcs_count).toLocaleString()} files
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>Unity / Git / Server guards</div>
+            </div>
+
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", padding: "12px 16px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Safety Net Window</div>
+              <div style={{ fontSize: "20px", fontWeight: 700, color: "#a78bfa", marginTop: "4px" }}>
+                30 Days
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>100% reversible via Quarantine</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {totalGroups === 0 ? (
         <div className="empty-state">
-          <h3>No duplicates found</h3>
-          <p>Every scanned file currently has unique content.</p>
+          <h3>No duplicates found in this scope</h3>
+          <p>Try switching to another scope filter or running a new scan.</p>
         </div>
       ) : (
         <>
+          <div style={{ display: "flex", gap: "8px", margin: "16px 0", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "13px", color: "var(--text-dim)", fontWeight: 600, marginRight: "4px" }}>Scope View:</span>
+            <button
+              className={`btn btn-small ${activeScope === "all" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setActiveScope("all"); load(0, "all"); }}
+            >
+              All Groups ({triageSummary?.total_groups.toLocaleString() ?? totalGroups})
+            </button>
+            <button
+              className={`btn btn-small ${activeScope === "personal" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setActiveScope("personal"); load(0, "personal"); }}
+              title="Only show personal files: Downloads, Photos, Documents, Videos"
+            >
+              📁 Personal & Media ({triageSummary?.personal_media_groups.toLocaleString() ?? 0})
+            </button>
+            <button
+              className={`btn btn-small ${activeScope === "heavy" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setActiveScope("heavy"); load(0, "heavy"); }}
+              title="High-impact duplicate groups larger than 50 MB"
+            >
+              📦 Heavy Files &gt;50MB ({triageSummary?.heavy_file_groups.toLocaleString() ?? 0})
+            </button>
+            <button
+              className={`btn btn-small ${activeScope === "caches" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setActiveScope("caches"); load(0, "caches"); }}
+              title="Unity PackageCache, node_modules, and git object duplicates"
+            >
+              ⚙️ Dev & Package Caches ({triageSummary?.dev_cache_groups.toLocaleString() ?? 0})
+            </button>
+            {activeScope === "caches" && (
+              <button
+                className="btn btn-ghost btn-small"
+                style={{ marginLeft: "auto", color: "#fbbf24" }}
+                onClick={handleWhitelistCaches}
+                title="Add development cache folders to ignore list to reduce scan noise"
+              >
+                🛡️ Whitelist All Caches
+              </button>
+            )}
+          </div>
+
           <div className="selection-bar" role="status">
             <span>
-              <strong>{selIds.length}</strong> file(s) selected ·{" "}
+              <strong>{selIds.length}</strong> file(s) selected on this page ·{" "}
               <strong>{formatBytes(selBytes)}</strong> will move to Quarantine
             </span>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -216,6 +392,46 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
               </button>
             </div>
           </div>
+
+          {selIds.length > 0 && totalGroups > PAGE_SIZE && (
+            <div
+              style={{
+                background: "rgba(59, 130, 246, 0.1)",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                borderRadius: "8px",
+                padding: "8px 14px",
+                margin: "10px 0 16px 0",
+                fontSize: "13px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>
+                {globalSelection
+                  ? `All ${totalGroups.toLocaleString()} duplicate groups across all ${Math.ceil(totalGroups / PAGE_SIZE)} pages are selected for action.`
+                  : `All ${groups.length} duplicate groups on this page are selected.`}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                style={{ color: "var(--accent)", fontWeight: 600 }}
+                onClick={() => {
+                  if (!globalSelection) {
+                    setGlobalSelection(true);
+                    setConfirmingAutoTriage(true);
+                  } else {
+                    setGlobalSelection(false);
+                  }
+                }}
+              >
+                {globalSelection
+                  ? "Clear global selection"
+                  : `👉 Select all ${totalGroups.toLocaleString()} duplicate groups across all ${Math.ceil(totalGroups / PAGE_SIZE)} pages`}
+              </button>
+            </div>
+          )}
+
 
           {groups.map((g) => {
             const keep = g.members.find((m) => m.id === g.recommended_keep_file_id);
@@ -370,19 +586,34 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
                     <button
                       className="btn btn-secondary btn-small"
                       style={{ fontWeight: 600 }}
+                      onClick={() => selectAllCopiesExceptKeep(g)}
+                      title="Keep only the canonical original copy and select all other copies for quarantine"
+                    >
+                      Keep One
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-small"
+                      style={{ fontWeight: 600 }}
                       onClick={() => keepAllInGroup(g.id)}
                       title="Keep all copies in this group intact without deleting any"
                     >
-                      Keep All (Don't Delete)
+                      Keep Both
                     </button>
-                    <button className="btn btn-ghost btn-small" onClick={() => selectAllCopiesExceptKeep(g)}>
-                      Reset selection
+                    <button
+                      className="btn btn-secondary btn-small"
+                      style={{ fontWeight: 600, color: "#38bdf8" }}
+                      onClick={() => handleHardlinkMerge(g.id)}
+                      disabled={busyMergeId === g.id}
+                      title="Replace duplicates with native filesystem hardlinks. Reclaims disk space while keeping all file paths functioning!"
+                    >
+                      {busyMergeId === g.id ? "Merging…" : "🔗 Merge (Hardlink)"}
                     </button>
                     {groupSel.size === 0 && (
                       <span className="badge badge-success" style={{ marginLeft: "auto" }}>
                         ✓ Keeping All Copies
                       </span>
                     )}
+
                     <button
                       className="btn btn-ghost btn-small"
                       onClick={() =>
@@ -424,6 +655,44 @@ export default function DuplicatesPage({ sessionId, showToast }: Props) {
             </button>
           </nav>
         </>
+      )}
+
+      {confirmingAutoTriage && triageSummary && (
+        <div className="overlay-backdrop" role="dialog" aria-modal="true">
+          <div className="modal" style={{ maxWidth: "560px" }}>
+            <h2>Confirm Executive Auto-Triage</h2>
+            <div className="modal-body">
+              <p>
+                You are approving automated cleanup across all <strong>{triageSummary.total_groups.toLocaleString()}</strong> duplicate groups:
+              </p>
+              <ul style={{ lineHeight: "1.8", margin: "16px 0", paddingLeft: "20px" }}>
+                <li>
+                  <strong>{triageSummary.recommended_keep_count.toLocaleString()}</strong> original files will be preserved in their permanent locations.
+                </li>
+                <li>
+                  <strong>{triageSummary.recommended_quarantine_count.toLocaleString()}</strong> redundant copies will be safely moved to Quarantine.
+                </li>
+                <li>
+                  <strong>{formatBytes(triageSummary.total_reclaimable_bytes)}</strong> of physical disk space will be reclaimed.
+                </li>
+                <li>
+                  <strong>{triageSummary.protected_cross_project_count + triageSummary.protected_vcs_count}</strong> server runtimes and Git objects are automatically shielded and kept intact.
+                </li>
+              </ul>
+              <div style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.25)", borderRadius: "8px", padding: "12px", fontSize: "13px", color: "var(--text-dim)" }}>
+                🛡️ <strong>Option C 30-Day Safety Window:</strong> Nothing is permanently deleted today. All quarantined files can be restored with a single click at any time.
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmingAutoTriage(false)} disabled={busy}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleApproveAutoTriage} disabled={busy}>
+                {busy ? "Quarantining…" : "Approve & Move to Quarantine"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirming && (

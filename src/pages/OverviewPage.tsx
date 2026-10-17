@@ -5,7 +5,7 @@ import type { ScanSummary } from "../types";
 
 interface Props {
   sessionId: number;
-  onNavigate: (page: Page) => void;
+  onNavigate: (page: Page, opts?: { folder?: string }) => void;
 }
 
 export default function OverviewPage({ sessionId, onNavigate }: Props) {
@@ -21,6 +21,7 @@ export default function OverviewPage({ sessionId, onNavigate }: Props) {
   if (!summary) return <p>Loading…</p>;
 
   const s = summary.session;
+  const primaryRoot = s.roots[0] ?? "";
 
   return (
     <section>
@@ -67,6 +68,41 @@ export default function OverviewPage({ sessionId, onNavigate }: Props) {
             {summary.inaccessible_files} inaccessible · {summary.error_files} with errors
           </span>
         </button>
+      </div>
+
+      <div
+        className="card"
+        style={{
+          marginTop: "16px",
+          background: "linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(59, 130, 246, 0.08))",
+          border: "1px solid rgba(99, 102, 241, 0.25)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <h3 style={{ margin: "0 0 4px 0", color: "#818cf8" }}>⚡ Comprehensive Deep Health & Recovery Audit</h3>
+            <p className="hint" style={{ margin: 0, fontSize: "13px" }}>
+              Run deep perceptual photo checks (pHash), document version lineages (SimHash), signature verification (.bin/.tmp), corrupted recovery collisions, and EXIF metadata extraction on scanned targets.
+            </p>
+          </div>
+          <div className="row" style={{ gap: "8px" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => onNavigate("duplicates")}
+            >
+              1-Click Auto-Triage Hub →
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ background: "#6366f1", borderColor: "#6366f1" }}
+              onClick={() => onNavigate("health-recovery", { folder: primaryRoot })}
+            >
+              Open Deep Audit Hub →
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="card">

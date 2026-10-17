@@ -13,11 +13,22 @@ import type {
   CarvedFileProposal,
 } from "../types";
 
-export const HealthRecoveryPage: React.FC = () => {
+interface HealthRecoveryPageProps {
+  initialFolderPath?: string;
+}
+
+export const HealthRecoveryPage: React.FC<HealthRecoveryPageProps> = ({ initialFolderPath }) => {
   const [activeTab, setActiveTab] = useState<"collisions" | "rectifier" | "near-dupes" | "reconstruction" | "doc-lineage" | "carving">("collisions");
-  const [folderPath, setFolderPath] = useState<string>("");
+  const [folderPath, setFolderPath] = useState<string>(initialFolderPath || "");
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingAll, setLoadingAll] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (initialFolderPath) {
+      setFolderPath(initialFolderPath);
+    }
+  }, [initialFolderPath]);
 
   // Quarantine in-progress flag
   const [quarantining, setQuarantining] = useState<boolean>(false);
@@ -82,6 +93,55 @@ export const HealthRecoveryPage: React.FC = () => {
   const [carvingProposals, setCarvingProposals] = useState<CarvedFileProposal[]>([]);
   const [selectedCarvings, setSelectedCarvings] = useState<Set<string>>(new Set());
   const [carvingExecuting, setCarvingExecuting] = useState<boolean>(false);
+
+  const handleRunAllAudits = async () => {
+    if (!folderPath.trim()) return;
+    setLoadingAll(true);
+    setStatusMessage(null);
+    try {
+      const path = folderPath.trim();
+      const [collRes, rectRes, nearRes, docRes, carvRes] = await Promise.allSettled([
+        api.scanAndCompareRecoveryPairs(path),
+        api.scanExtensionRectifications(path),
+        api.scanPerceptualDuplicates(path, hammingDistanceThreshold),
+        api.scanDocumentLineages(path, docDistanceThreshold),
+        api.scanCarvingCandidates(path),
+      ]);
+
+      let totalIssues = 0;
+
+      if (collRes.status === "fulfilled") {
+        setPairs(collRes.value);
+        totalIssues += collRes.value.length;
+      }
+      if (rectRes.status === "fulfilled") {
+        setRectifications(rectRes.value);
+        setSelectedRectifications(new Set(rectRes.value.map((r) => r.current_path)));
+        totalIssues += rectRes.value.length;
+      }
+      if (nearRes.status === "fulfilled") {
+        setClusters(nearRes.value);
+        totalIssues += nearRes.value.length;
+      }
+      if (docRes.status === "fulfilled") {
+        setDocClusters(docRes.value);
+        totalIssues += docRes.value.length;
+      }
+      if (carvRes.status === "fulfilled") {
+        setCarvingProposals(carvRes.value);
+        setSelectedCarvings(new Set(carvRes.value.map((c) => c.source_path)));
+        totalIssues += carvRes.value.length;
+      }
+
+      setStatusMessage(
+        `Comprehensive Deep Audit completed across all 5 engines. Discovered ${totalIssues} actionable items/clusters.`
+      );
+    } catch (err) {
+      setStatusMessage(`Comprehensive deep audit encountered an error: ${String(err)}`);
+    } finally {
+      setLoadingAll(false);
+    }
+  };
 
   const handleScanCollisions = async () => {
     if (!folderPath.trim()) return;
@@ -465,6 +525,108 @@ export const HealthRecoveryPage: React.FC = () => {
                 {loading ? "Carving Streams..." : "Carve & Extract Metadata"}
               </button>
             )}
+            <button
+              type="button"
+              onClick={handleRunAllAudits}
+              disabled={loading || loadingAll || !folderPath.trim()}
+              className="btn btn-secondary"
+              style={{
+                borderColor: "#6366f1",
+                color: "#818cf8",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+              title="Runs all 5 health and recovery inspection engines concurrently on this folder"
+            >
+              {loadingAll ? "Running All Audits..." : "⚡ Run All Audits"}
+            </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "10px 14px",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 600, color: "var(--text)" }}>Audit Engines:</span>
+              <button
+                type="button"
+                className="badge"
+                style={{
+                  cursor: "pointer",
+                  border: "none",
+                  background: pairs.length > 0 ? "rgba(239, 68, 68, 0.15)" : "var(--bg)",
+                  color: pairs.length > 0 ? "var(--error)" : "var(--text-muted)",
+                }}
+                onClick={() => setActiveTab("collisions")}
+              >
+                🩹 Collisions: {pairs.length}
+              </button>
+              <button
+                type="button"
+                className="badge"
+                style={{
+                  cursor: "pointer",
+                  border: "none",
+                  background: rectifications.length > 0 ? "rgba(245, 158, 11, 0.15)" : "var(--bg)",
+                  color: rectifications.length > 0 ? "var(--warning)" : "var(--text-muted)",
+                }}
+                onClick={() => setActiveTab("rectifier")}
+              >
+                🏷️ Signatures: {rectifications.length}
+              </button>
+              <button
+                type="button"
+                className="badge"
+                style={{
+                  cursor: "pointer",
+                  border: "none",
+                  background: clusters.length > 0 ? "rgba(59, 130, 246, 0.15)" : "var(--bg)",
+                  color: clusters.length > 0 ? "#60a5fa" : "var(--text-muted)",
+                }}
+                onClick={() => setActiveTab("near-dupes")}
+              >
+                🖼️ Photos (pHash): {clusters.length}
+              </button>
+              <button
+                type="button"
+                className="badge"
+                style={{
+                  cursor: "pointer",
+                  border: "none",
+                  background: docClusters.length > 0 ? "rgba(139, 92, 246, 0.15)" : "var(--bg)",
+                  color: docClusters.length > 0 ? "#a78bfa" : "var(--text-muted)",
+                }}
+                onClick={() => setActiveTab("doc-lineage")}
+              >
+                📄 Docs (SimHash): {docClusters.length}
+              </button>
+              <button
+                type="button"
+                className="badge"
+                style={{
+                  cursor: "pointer",
+                  border: "none",
+                  background: carvingProposals.length > 0 ? "rgba(16, 185, 129, 0.15)" : "var(--bg)",
+                  color: carvingProposals.length > 0 ? "var(--success)" : "var(--text-muted)",
+                }}
+                onClick={() => setActiveTab("carving")}
+              >
+                🧩 Carved: {carvingProposals.length}
+              </button>
+            </div>
+            <span className="hint" style={{ fontSize: "11px" }}>
+              Click any engine pill to inspect findings
+            </span>
           </div>
         </div>
       )}

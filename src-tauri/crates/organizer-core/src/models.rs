@@ -460,4 +460,43 @@ pub struct DuplicateMemberExplanation {
     pub is_vcs_internal: bool,
 }
 
+/// Aggregated breakdown for 1-click executive auto-triage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoTriageSummary {
+    pub session_id: i64,
+    pub total_groups: u64,
+    pub total_duplicate_files: u64,
+    pub total_reclaimable_bytes: u64,
+    pub recommended_keep_count: u64,
+    pub recommended_quarantine_count: u64,
+    pub protected_cross_project_count: u64,
+    pub protected_vcs_count: u64,
+    pub protected_backup_count: u64,
+    pub personal_media_groups: u64,
+    pub dev_cache_groups: u64,
+    pub heavy_file_groups: u64,
+}
+
+/// Status of quarantined items evaluated against retention policy (Option C).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuarantineRetentionStatus {
+    pub total_items: usize,
+    pub total_bytes: u64,
+    pub expired_items: usize,
+    pub expired_bytes: u64,
+    pub oldest_item_age_days: u32,
+    pub retention_days_threshold: u32,
+}
+
+/// Report for hardlink-based deduplication merge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeGroupReport {
+    pub group_id: i64,
+    pub original_path: String,
+    pub merged_paths: Vec<String>,
+    pub failed_paths: Vec<String>,
+    pub bytes_saved: u64,
+}
+
+
 

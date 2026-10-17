@@ -3,6 +3,8 @@
 
 use std::path::{Path, PathBuf};
 use std::thread;
+use std::io::{Read, Write};
+
 
 use organizer_core::{
     backup::{self, BackupError, BackupSet, BackupRun, BackupSnapshot, BackupDestination, BackupSchedule, RetentionPolicy, VerificationMode, BackupPlan, BackupProgress, BackupHealth, BackupRunSummary, RestoreConflictPolicy, DestinationValidation, BackupRunStatus, RestoreResult as BackupRestoreResult},
@@ -226,13 +228,217 @@ pub fn get_duplicate_groups(
     state: State<AppState>,
     session_id: i64,
     page: Option<u64>,
+    scope: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let page_size = 25;
     let offset = page.unwrap_or(0).saturating_mul(page_size as u64) as usize;
     let (groups, total) =
-        with_store(&state, |s| s.duplicate_groups_page(session_id, page_size, offset))?;
+        with_store(&state, |s| s.duplicate_groups_page(session_id, page_size, offset, scope.as_deref()))?;
     Ok(serde_json::json!({ "items": groups, "total": total }))
 }
+
+#[tauri::command]
+pub fn get_auto_triage_summary(
+    state: State<AppState>,
+    session_id: i64,
+) -> Result<AutoTriageSummary, String> {
+    with_store(&state, |s| s.get_auto_triage_summary(session_id))
+}
+
+#[tauri::command]
+pub fn apply_auto_triage_quarantine(
+    state: State<AppState>,
+    session_id: i64,
+    protect_cross_project: bool,
+    protect_vcs: bool,
+    protect_caches: bool,
+) -> Result<QuarantineResult, String> {
+    let candidate_ids = with_store(&state, |s| {
+        s.get_auto_triage_candidate_file_ids(session_id, protect_cross_project, protect_vcs, protect_caches)
+    })?;
+
+    let cancel = CancelToken::new();
+    let result = {
+        let store = state.store.lock().map_err(|_| "lock error")?;
+        quarantine::quarantine_files(&store, &candidate_ids, &state.quarantine_root, &cancel)?
+    };
+    Ok(QuarantineResult { report: result.report })
+}
+
+#[tauri::command]
+pub fn hardlink_merge_group(
+    state: State<AppState>,
+    group_id: i64,
+) -> Result<MergeGroupReport, String> {
+    with_store(&state, |s| s.hardlink_merge_group(group_id))
+}
+
+#[tauri::command]
+pub fn check_quarantine_retention(
+    state: State<AppState>,
+    retention_days: u32,
+) -> Result<QuarantineRetentionStatus, String> {
+    with_store(&state, |s| s.check_quarantine_retention(retention_days))
+}
+
+#[tauri::command]
+pub fn purge_expired_quarantine(
+    state: State<AppState>,
+    retention_days: u32,
+) -> Result<BatchReport, String> {
+    let expired_ids = with_store(&state, |s| s.get_expired_quarantine_item_ids(retention_days))?;
+    let store = state.store.lock().map_err(|_| "lock error")?;
+    deleter::delete_permanently(&store, &expired_ids)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UpdateCheckResult {
+    pub has_update: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_notes: String,
+    pub asset_url: Option<String>,
+    pub asset_name: Option<String>,
+    pub asset_size_bytes: Option<u64>,
+}
+
+#[tauri::command]
+pub fn check_for_updates() -> Result<UpdateCheckResult, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let url = "https://api.github.com/repos/TheMrDuck/FileHarbor/releases/latest";
+
+    let resp = ureq::get(url)
+        .set("User-Agent", "FileHarbor-App")
+        .set("Accept", "application/vnd.github.v3+json")
+        .timeout(std::time::Duration::from_secs(10))
+        .call()
+        .map_err(|e| format!("Failed to check for updates: {e}"))?;
+
+    let json: serde_json::Value = resp.into_json().map_err(|e| format!("Invalid release response: {e}"))?;
+
+    let tag_name = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").trim_start_matches('v');
+    let release_notes = json.get("body").and_then(|v| v.as_str()).unwrap_or("No release notes provided.").to_string();
+
+    let assets = json.get("assets").and_then(|v| v.as_array());
+
+    let mut chosen_url = None;
+    let mut chosen_name = None;
+    let mut chosen_size = None;
+
+    if let Some(asset_list) = assets {
+        for a in asset_list {
+            let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let download_url = a.get("browser_download_url").and_then(|v| v.as_str()).unwrap_or("");
+            let size = a.get("size").and_then(|v| v.as_u64());
+
+            #[cfg(target_os = "windows")]
+            {
+                if name.ends_with("_x64-setup.exe") || name.ends_with(".exe") {
+                    chosen_url = Some(download_url.to_string());
+                    chosen_name = Some(name.to_string());
+                    chosen_size = size;
+                    break;
+                }
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                if name.ends_with(".dmg") {
+                    chosen_url = Some(download_url.to_string());
+                    chosen_name = Some(name.to_string());
+                    chosen_size = size;
+                    break;
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                if name.ends_with(".AppImage") || name.ends_with(".deb") {
+                    chosen_url = Some(download_url.to_string());
+                    chosen_name = Some(name.to_string());
+                    chosen_size = size;
+                    break;
+                }
+            }
+        }
+    }
+
+    let has_update = is_newer_version(tag_name, &current_version);
+
+    Ok(UpdateCheckResult {
+        has_update,
+        current_version,
+        latest_version: tag_name.to_string(),
+        release_notes,
+        asset_url: chosen_url,
+        asset_name: chosen_name,
+        asset_size_bytes: chosen_size,
+    })
+}
+
+fn is_newer_version(latest: &str, current: &str) -> bool {
+    let parse_parts = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .filter_map(|p| p.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<u64>().ok())
+            .collect()
+    };
+    let l_parts = parse_parts(latest);
+    let c_parts = parse_parts(current);
+    for (l, c) in l_parts.iter().zip(c_parts.iter()) {
+        if l > c { return true; }
+        if l < c { return false; }
+    }
+    l_parts.len() > c_parts.len()
+}
+
+#[tauri::command]
+pub fn download_and_install_update(app: AppHandle, asset_url: String) -> Result<(), String> {
+    let temp_dir = std::env::temp_dir();
+    let filename = asset_url.split('/').last().unwrap_or("FileHarbor_Update.exe");
+    let dest_path = temp_dir.join(filename);
+
+    let resp = ureq::get(&asset_url)
+        .set("User-Agent", "FileHarbor-App")
+        .call()
+        .map_err(|e| format!("Failed to download update: {e}"))?;
+
+    let total_size: u64 = resp.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(0);
+
+    let mut reader = resp.into_reader();
+    let mut file = std::fs::File::create(&dest_path).map_err(|e| format!("Failed to create update file: {e}"))?;
+
+    let mut buffer = [0u8; 65536];
+    let mut downloaded: u64 = 0;
+
+    loop {
+        let bytes_read = reader.read(&mut buffer).map_err(|e| format!("Download stream error: {e}"))?;
+        if bytes_read == 0 {
+            break;
+        }
+        file.write_all(&buffer[..bytes_read]).map_err(|e| format!("Write error: {e}"))?;
+        downloaded += bytes_read as u64;
+
+        let _ = app.emit("update-download-progress", serde_json::json!({
+            "downloaded": downloaded,
+            "total": total_size,
+            "percentage": if total_size > 0 { (downloaded as f64 / total_size as f64) * 100.0 } else { 0.0 }
+        }));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new(&dest_path)
+            .spawn()
+            .map_err(|e| format!("Failed to launch installer: {e}"))?;
+        std::process::exit(0);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
 
 /// Re-run candidate finding + hashing + grouping without a filesystem
 /// walk. Used by "Retry analysis" after failures or manual fixes.

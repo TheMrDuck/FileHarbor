@@ -36,7 +36,7 @@ fn main() {
             });
             Ok(())
         })
-.invoke_handler(tauri::generate_handler![
+        .invoke_handler(tauri::generate_handler![
             commands::start_scan,
             commands::cancel_scan,
             commands::get_recent_sessions,
@@ -112,9 +112,15 @@ fn main() {
             commands::execute_carving_renames,
             commands::run_harbor_patrol,
             commands::open_file,
-            commands::show_in_folder
+            commands::show_in_folder,
+            commands::get_auto_triage_summary,
+            commands::apply_auto_triage_quarantine,
+            commands::hardlink_merge_group,
+            commands::check_quarantine_retention,
+            commands::purge_expired_quarantine,
+            commands::check_for_updates,
+            commands::download_and_install_update
         ])
-.run(tauri::generate_context!())
+        .run(tauri::generate_context!())
         .expect("error while running FileHarbor");
 }
-

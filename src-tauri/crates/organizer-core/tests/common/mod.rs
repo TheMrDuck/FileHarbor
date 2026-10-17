@@ -57,7 +57,7 @@ pub fn duplicate_groups(store: &Store, session_id: i64) -> Vec<DuplicateGroup> {
     let mut page = 0;
     loop {
         let (groups, total) =
-            store.duplicate_groups_page(session_id, 25, page * 25).expect("groups");
+            store.duplicate_groups_page(session_id, 25, page * 25, None).expect("groups");
         all.extend(groups);
         if all.len() as i64 >= total {
             break;

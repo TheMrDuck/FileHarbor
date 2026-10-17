@@ -657,20 +657,41 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
         tx.commit().map_err(|e| e.to_string())
     }
 
-    pub fn duplicate_group_count(&self, session_id: i64) -> Result<i64, String> {
+    pub fn duplicate_group_count(&self, session_id: i64, scope: Option<&str>) -> Result<i64, String> {
+        let scope_clause = match scope {
+            Some("heavy") => "AND g.size_bytes >= 52428800",
+            Some("caches") => "AND (
+                SELECT COUNT(*) FROM duplicate_members dm
+                JOIN file_records df ON df.id = dm.file_id
+                WHERE dm.group_id = g.id AND (
+                    df.path LIKE '%packagecache%' OR df.path LIKE '%node_modules%'
+                    OR df.path LIKE '%.git%' OR df.path LIKE '%/target/%' OR df.path LIKE '%\\target\\%'
+                )
+            ) > 0",
+            Some("personal") => "AND (
+                SELECT COUNT(*) FROM duplicate_members dm
+                JOIN file_records df ON df.id = dm.file_id
+                WHERE dm.group_id = g.id AND (
+                    df.path LIKE '%packagecache%' OR df.path LIKE '%node_modules%'
+                    OR df.path LIKE '%.git%' OR df.path LIKE '%/target/%' OR df.path LIKE '%\\target\\%'
+                )
+            ) = 0",
+            _ => "",
+        };
+
+        let sql = format!(
+            "SELECT COUNT(*) FROM duplicate_groups g
+             WHERE g.session_id = ?1
+               {scope_clause}
+               AND (
+                 SELECT COUNT(*) FROM duplicate_members m
+                 JOIN file_records f ON f.id = m.file_id
+                 WHERE m.group_id = g.id
+                   AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+               ) > 1"
+        );
         self.conn
-            .query_row(
-                "SELECT COUNT(*) FROM duplicate_groups g
-                 WHERE g.session_id = ?1
-                   AND (
-                     SELECT COUNT(*) FROM duplicate_members m
-                     JOIN file_records f ON f.id = m.file_id
-                     WHERE m.group_id = g.id
-                       AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
-                   ) > 1",
-                params![session_id],
-                |r| r.get(0),
-            )
+            .query_row(&sql, params![session_id], |r| r.get(0))
             .map_err(|e| e.to_string())
     }
 
@@ -679,22 +700,44 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
         session_id: i64,
         limit: usize,
         offset: usize,
+        scope: Option<&str>,
     ) -> Result<(Vec<DuplicateGroup>, i64), String> {
-        let total = self.duplicate_group_count(session_id)?;
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT g.id FROM duplicate_groups g
-                 WHERE g.session_id = ?1
-                   AND (
-                     SELECT COUNT(*) FROM duplicate_members m
-                     JOIN file_records f ON f.id = m.file_id
-                     WHERE m.group_id = g.id
-                       AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
-                   ) > 1
-                 ORDER BY g.size_bytes DESC, g.hash ASC LIMIT ?2 OFFSET ?3",
-            )
-            .map_err(|e| e.to_string())?;
+        let total = self.duplicate_group_count(session_id, scope)?;
+        let scope_clause = match scope {
+            Some("heavy") => "AND g.size_bytes >= 52428800",
+            Some("caches") => "AND (
+                SELECT COUNT(*) FROM duplicate_members dm
+                JOIN file_records df ON df.id = dm.file_id
+                WHERE dm.group_id = g.id AND (
+                    df.path LIKE '%packagecache%' OR df.path LIKE '%node_modules%'
+                    OR df.path LIKE '%.git%' OR df.path LIKE '%/target/%' OR df.path LIKE '%\\target\\%'
+                )
+            ) > 0",
+            Some("personal") => "AND (
+                SELECT COUNT(*) FROM duplicate_members dm
+                JOIN file_records df ON df.id = dm.file_id
+                WHERE dm.group_id = g.id AND (
+                    df.path LIKE '%packagecache%' OR df.path LIKE '%node_modules%'
+                    OR df.path LIKE '%.git%' OR df.path LIKE '%/target/%' OR df.path LIKE '%\\target\\%'
+                )
+            ) = 0",
+            _ => "",
+        };
+
+        let sql = format!(
+            "SELECT g.id FROM duplicate_groups g
+             WHERE g.session_id = ?1
+               {scope_clause}
+               AND (
+                 SELECT COUNT(*) FROM duplicate_members m
+                 JOIN file_records f ON f.id = m.file_id
+                 WHERE m.group_id = g.id
+                   AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+               ) > 1
+             ORDER BY g.size_bytes DESC, g.hash ASC LIMIT ?2 OFFSET ?3"
+        );
+
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
         let ids: Vec<i64> = stmt
             .query_map(params![session_id, limit as i64, offset as i64], |r| r.get(0))
             .map_err(|e| e.to_string())?
@@ -757,6 +800,315 @@ rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
         }
         Ok((groups, total))
     }
+
+    /// Aggregated summary for the 1-click executive auto-triage across all groups in the scan.
+    pub fn get_auto_triage_summary(&self, session_id: i64) -> Result<AutoTriageSummary, String> {
+        let total_groups = self.duplicate_group_count(session_id, None)? as u64;
+
+        let mut g_stmt = self.conn.prepare(
+            "SELECT g.id, g.size_bytes, g.recommended_keep_file_id FROM duplicate_groups g
+             WHERE g.session_id = ?1
+               AND (
+                 SELECT COUNT(*) FROM duplicate_members m
+                 JOIN file_records f ON f.id = m.file_id
+                 WHERE m.group_id = g.id
+                   AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+               ) > 1"
+        ).map_err(|e| e.to_string())?;
+
+        let group_rows = g_stmt.query_map(params![session_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)?))
+        }).map_err(|e| e.to_string())?;
+
+        let mut total_duplicate_files = 0u64;
+        let mut total_reclaimable_bytes = 0u64;
+        let mut recommended_keep_count = 0u64;
+        let mut recommended_quarantine_count = 0u64;
+        let mut protected_cross_project_count = 0u64;
+        let mut protected_vcs_count = 0u64;
+        let mut protected_backup_count = 0u64;
+        let mut personal_media_groups = 0u64;
+        let mut dev_cache_groups = 0u64;
+        let mut heavy_file_groups = 0u64;
+
+        let mut m_stmt = self.conn.prepare(
+            "SELECT f.id, f.path, f.copy_role FROM file_records f
+             JOIN duplicate_members m ON m.file_id = f.id
+             WHERE m.group_id = ?1
+               AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')"
+        ).map_err(|e| e.to_string())?;
+
+        for g in group_rows {
+            let (gid, size, keep_id) = g.map_err(|e| e.to_string())?;
+            if size >= 50 * 1024 * 1024 {
+                heavy_file_groups += 1;
+            }
+
+            let member_rows = m_stmt.query_map(params![gid], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+            }).map_err(|e| e.to_string())?;
+
+            let mut members: Vec<(i64, String, String)> = Vec::new();
+            for m in member_rows {
+                members.push(m.map_err(|e| e.to_string())?);
+            }
+
+            if members.len() <= 1 {
+                continue;
+            }
+
+            total_duplicate_files += members.len() as u64;
+            let reclaimable = size.saturating_mul((members.len() - 1) as u64);
+            total_reclaimable_bytes += reclaimable;
+
+            let is_cross_project = if members.len() > 1 {
+                let p0 = std::path::Path::new(&members[0].1);
+                members[1..].iter().any(|m| crate::project_context::are_cross_project(p0, std::path::Path::new(&m.1)))
+            } else {
+                false
+            };
+
+            let mut is_dev_cache = false;
+            let mut is_personal = true;
+
+            for (mid, path, copy_role) in &members {
+                let p_lower = path.to_lowercase();
+                let is_vcs = p_lower.contains("/.git/") || p_lower.contains("\\.git\\")
+                    || p_lower.contains("/node_modules/") || p_lower.contains("\\node_modules\\")
+                    || p_lower.contains("packagecache") || p_lower.contains("/target/") || p_lower.contains("\\target\\");
+
+                if is_vcs {
+                    is_dev_cache = true;
+                    is_personal = false;
+                }
+
+                if *mid == keep_id {
+                    recommended_keep_count += 1;
+                } else if copy_role == "backup" {
+                    protected_backup_count += 1;
+                } else if is_cross_project {
+                    protected_cross_project_count += 1;
+                } else if is_vcs {
+                    protected_vcs_count += 1;
+                } else {
+                    recommended_quarantine_count += 1;
+                }
+            }
+
+            if is_dev_cache {
+                dev_cache_groups += 1;
+            }
+            if is_personal {
+                personal_media_groups += 1;
+            }
+        }
+
+        Ok(AutoTriageSummary {
+            session_id,
+            total_groups,
+            total_duplicate_files,
+            total_reclaimable_bytes,
+            recommended_keep_count,
+            recommended_quarantine_count,
+            protected_cross_project_count,
+            protected_vcs_count,
+            protected_backup_count,
+            personal_media_groups,
+            dev_cache_groups,
+            heavy_file_groups,
+        })
+    }
+
+    /// Fast candidate ID resolution for bulk 1-click auto-triage.
+    pub fn get_auto_triage_candidate_file_ids(
+        &self,
+        session_id: i64,
+        protect_cross_project: bool,
+        protect_vcs: bool,
+        protect_caches: bool,
+    ) -> Result<Vec<i64>, String> {
+        let mut g_stmt = self.conn.prepare(
+            "SELECT g.id, g.recommended_keep_file_id FROM duplicate_groups g
+             WHERE g.session_id = ?1
+               AND (
+                 SELECT COUNT(*) FROM duplicate_members m
+                 JOIN file_records f ON f.id = m.file_id
+                 WHERE m.group_id = g.id
+                   AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')
+               ) > 1"
+        ).map_err(|e| e.to_string())?;
+
+        let group_rows = g_stmt.query_map(params![session_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+        }).map_err(|e| e.to_string())?;
+
+        let mut candidate_ids = Vec::new();
+
+        let mut m_stmt = self.conn.prepare(
+            "SELECT f.id, f.path, f.copy_role FROM file_records f
+             JOIN duplicate_members m ON m.file_id = f.id
+             WHERE m.group_id = ?1
+               AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')"
+        ).map_err(|e| e.to_string())?;
+
+        for g in group_rows {
+            let (gid, keep_id) = g.map_err(|e| e.to_string())?;
+            let member_rows = m_stmt.query_map(params![gid], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+            }).map_err(|e| e.to_string())?;
+
+            let mut members: Vec<(i64, String, String)> = Vec::new();
+            for m in member_rows {
+                members.push(m.map_err(|e| e.to_string())?);
+            }
+
+            if members.len() <= 1 {
+                continue;
+            }
+
+            let is_cross_project = if members.len() > 1 && protect_cross_project {
+                let p0 = std::path::Path::new(&members[0].1);
+                members[1..].iter().any(|m| crate::project_context::are_cross_project(p0, std::path::Path::new(&m.1)))
+            } else {
+                false
+            };
+
+            if is_cross_project && protect_cross_project {
+                continue;
+            }
+
+            for (mid, path, copy_role) in members {
+                if mid == keep_id {
+                    continue;
+                }
+                if copy_role == "backup" {
+                    continue;
+                }
+                let p_lower = path.to_lowercase();
+                let is_vcs = p_lower.contains("/.git/") || p_lower.contains("\\.git\\");
+                if is_vcs && protect_vcs {
+                    continue;
+                }
+                let is_cache = p_lower.contains("packagecache") || p_lower.contains("/node_modules/")
+                    || p_lower.contains("\\node_modules\\") || p_lower.contains("/target/") || p_lower.contains("\\target\\");
+                if is_cache && protect_caches {
+                    continue;
+                }
+                candidate_ids.push(mid);
+            }
+        }
+
+        Ok(candidate_ids)
+    }
+
+    /// Hardlink consolidation for all duplicate copies in a group into the canonical original copy.
+    pub fn hardlink_merge_group(&self, group_id: i64) -> Result<MergeGroupReport, String> {
+        let (keep_id, size): (i64, i64) = self.conn.query_row(
+            "SELECT recommended_keep_file_id, size_bytes FROM duplicate_groups WHERE id = ?1",
+            params![group_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).map_err(|e| e.to_string())?;
+
+        let mut m_stmt = self.conn.prepare(
+            "SELECT f.id, f.path FROM file_records f
+             JOIN duplicate_members m ON m.file_id = f.id
+             WHERE m.group_id = ?1
+               AND f.path NOT IN (SELECT original_path FROM quarantine_items WHERE status = 'stored')"
+        ).map_err(|e| e.to_string())?;
+
+        let rows = m_stmt.query_map(params![group_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+
+        let mut keep_path = String::new();
+        let mut duplicates = Vec::new();
+
+        for r in rows {
+            let (fid, path) = r.map_err(|e| e.to_string())?;
+            if fid == keep_id {
+                keep_path = path;
+            } else {
+                duplicates.push((fid, path));
+            }
+        }
+
+        if keep_path.is_empty() {
+            return Err("Canonical keep file not found or already quarantined".to_string());
+        }
+
+        let orig_path = std::path::Path::new(&keep_path);
+        let mut merged_paths = Vec::new();
+        let mut failed_paths = Vec::new();
+        let mut bytes_saved = 0u64;
+
+        for (_fid, dup_str) in duplicates {
+            let dup_path = std::path::Path::new(&dup_str);
+            match crate::fs_layer::consolidate_as_hardlink(orig_path, dup_path) {
+                Ok(()) => {
+                    merged_paths.push(dup_str);
+                    bytes_saved += size as u64;
+                }
+                Err(e) => {
+                    failed_paths.push(format!("{}: {}", dup_str, e));
+                }
+            }
+        }
+
+        Ok(MergeGroupReport {
+            group_id,
+            original_path: keep_path,
+            merged_paths,
+            failed_paths,
+            bytes_saved,
+        })
+    }
+
+    /// Evaluates current quarantine against retention days (Option C: 30-Day Window).
+    pub fn check_quarantine_retention(&self, threshold_days: u32) -> Result<QuarantineRetentionStatus, String> {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let threshold_ms = (threshold_days as i64) * 24 * 60 * 60 * 1000;
+        let cutoff_ms = now_ms - threshold_ms;
+
+        let items = self.get_quarantine_items(false)?;
+        let total_items = items.len();
+        let total_bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
+
+        let expired: Vec<&QuarantineItem> = items.iter().filter(|i| i.quarantined_at_ms <= cutoff_ms).collect();
+        let expired_items = expired.len();
+        let expired_bytes: u64 = expired.iter().map(|i| i.size_bytes).sum();
+
+        let oldest_ms = items.iter().map(|i| i.quarantined_at_ms).min().unwrap_or(now_ms);
+        let oldest_age_ms = now_ms.saturating_sub(oldest_ms);
+        let oldest_item_age_days = (oldest_age_ms / (24 * 60 * 60 * 1000)) as u32;
+
+        Ok(QuarantineRetentionStatus {
+            total_items,
+            total_bytes,
+            expired_items,
+            expired_bytes,
+            oldest_item_age_days,
+            retention_days_threshold: threshold_days,
+        })
+    }
+
+    /// Gets IDs of quarantine items that exceed the retention policy window.
+    pub fn get_expired_quarantine_item_ids(&self, threshold_days: u32) -> Result<Vec<i64>, String> {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let threshold_ms = (threshold_days as i64) * 24 * 60 * 60 * 1000;
+        let cutoff_ms = now_ms - threshold_ms;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM quarantine_items WHERE status = 'stored' AND quarantined_at_ms <= ?1"
+        ).map_err(|e| e.to_string())?;
+
+        let ids = stmt.query_map(params![cutoff_ms], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<i64>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        Ok(ids)
+    }
+
 
     pub fn get_duplicate_group(&self, group_id: i64) -> Result<Option<DuplicateGroup>, String> {
         let res: Result<(i64, String, i64, i64), _> = self.conn.query_row(

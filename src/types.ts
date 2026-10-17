@@ -709,3 +709,46 @@ export interface UnrecoverableDetail {
   affected_relative_paths: string[];
   affected_snapshot_ids: number[];
 }
+
+export interface AutoTriageSummary {
+  session_id: number;
+  total_groups: number;
+  total_duplicate_files: number;
+  total_reclaimable_bytes: number;
+  recommended_keep_count: number;
+  recommended_quarantine_count: number;
+  protected_cross_project_count: number;
+  protected_vcs_count: number;
+  protected_backup_count: number;
+  personal_media_groups: number;
+  dev_cache_groups: number;
+  heavy_file_groups: number;
+}
+
+export interface QuarantineRetentionStatus {
+  total_items: number;
+  total_bytes: number;
+  expired_items: number;
+  expired_bytes: number;
+  oldest_item_age_days: number;
+  retention_days_threshold: number;
+}
+
+export interface MergeGroupReport {
+  group_id: number;
+  original_path: string;
+  merged_paths: string[];
+  failed_paths: string[];
+  bytes_saved: number;
+}
+
+export interface UpdateCheckResult {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_notes: string;
+  asset_url: string | null;
+  asset_name: string | null;
+  asset_size_bytes: number | null;
+}
+

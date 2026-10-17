@@ -14,6 +14,7 @@ interface Props {
 
 export default function NewScanPage({ initialRoots, onStarted, onOpenResults, activeScanId }: Props) {
   const [roots, setRoots] = useState<string[]>(initialRoots ?? []);
+  const [scanProfile, setScanProfile] = useState<"standard" | "deep">("standard");
   const [recent, setRecent] = useState<ScanSession[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [backupAdvisory, setBackupAdvisory] = useState<string | null>(null);
@@ -119,6 +120,61 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults, ac
             </p>
           </div>
         )}
+        <div style={{ marginTop: "16px", marginBottom: "16px" }}>
+          <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>
+            Audit Depth & Profile:
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <div
+              style={{
+                border: scanProfile === "standard" ? "2px solid var(--primary)" : "1px solid var(--border)",
+                background: scanProfile === "standard" ? "rgba(59, 130, 246, 0.08)" : "var(--bg)",
+                borderRadius: "var(--radius-sm)",
+                padding: "12px",
+                cursor: "pointer",
+              }}
+              onClick={() => setScanProfile("standard")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+                <input
+                  type="radio"
+                  name="scanProfile"
+                  checked={scanProfile === "standard"}
+                  onChange={() => setScanProfile("standard")}
+                />
+                <span>Standard Cryptographic Audit</span>
+              </div>
+              <p className="hint" style={{ margin: "6px 0 0 24px", fontSize: "12px" }}>
+                Fast byte-for-byte exact SHA-256 duplicates, empty files, and permission problems. Best for routine drive cleanup.
+              </p>
+            </div>
+
+            <div
+              style={{
+                border: scanProfile === "deep" ? "2px solid #6366f1" : "1px solid var(--border)",
+                background: scanProfile === "deep" ? "rgba(99, 102, 241, 0.08)" : "var(--bg)",
+                borderRadius: "var(--radius-sm)",
+                padding: "12px",
+                cursor: "pointer",
+              }}
+              onClick={() => setScanProfile("deep")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#818cf8" }}>
+                <input
+                  type="radio"
+                  name="scanProfile"
+                  checked={scanProfile === "deep"}
+                  onChange={() => setScanProfile("deep")}
+                />
+                <span>⚡ Comprehensive Deep Audit (All Tests)</span>
+              </div>
+              <p className="hint" style={{ margin: "6px 0 0 24px", fontSize: "12px" }}>
+                Includes exact SHA-256 duplicates + photo perceptual hashes (pHash), document version lineages (SimHash), signature verification (.bin/.tmp), and recovery collisions.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="row">
           <button className="btn btn-secondary" onClick={addFolder}>
             Add folder…
@@ -128,7 +184,7 @@ export default function NewScanPage({ initialRoots, onStarted, onOpenResults, ac
             onClick={startScan}
             disabled={starting || roots.length === 0}
           >
-            Start scan
+            {scanProfile === "deep" ? "Start Deep Audit" : "Start scan"}
           </button>
         </div>
         {error && (

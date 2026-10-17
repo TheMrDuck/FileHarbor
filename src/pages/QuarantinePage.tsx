@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, formatBytes, formatDate } from "../api";
-import type { QuarantineItem } from "../types";
+import type { QuarantineItem, QuarantineRetentionStatus } from "../types";
 import ConfirmDialog from "../components/ConfirmDialog";
 
 interface Props {
@@ -25,12 +25,17 @@ export default function QuarantinePage({ showToast }: Props) {
   >(null);
   const [busy, setBusy] = useState(false);
   const [backupStatus, setBackupStatus] = useState<Map<number, BackupStatusInfo>>(new Map());
+  const [retention, setRetention] = useState<QuarantineRetentionStatus | null>(null);
 
-const load = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const quarantineItems = await api.quarantineItems();
+      const [quarantineItems, retStatus] = await Promise.all([
+        api.quarantineItems(),
+        api.checkQuarantineRetention(30).catch(() => null),
+      ]);
       setItems(quarantineItems);
+      if (retStatus) setRetention(retStatus);
       setSelected(new Set());
       
       // Check backup status for each item
@@ -143,7 +148,25 @@ const load = useCallback(async () => {
     }
   };
 
-const deleteTotal = stored
+  const handlePurgeExpired = async () => {
+    if (!retention || retention.expired_items === 0) return;
+    setBusy(true);
+    try {
+      const report = await api.purgeExpiredQuarantine(30);
+      if (report.failed === 0) {
+        showToast(`Permanently purged ${report.succeeded} expired file(s) from Quarantine.`);
+      } else {
+        showToast(`Purged ${report.succeeded}, failed ${report.failed}.`, "error");
+      }
+      await load();
+    } catch (e) {
+      showToast(String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteTotal = stored
     .filter((i) => selected.has(i.id))
     .reduce((sum, i) => sum + i.size_bytes, 0);
 
@@ -170,6 +193,47 @@ const deleteTotal = stored
           {formatBytes(stored.reduce((s, i) => s + i.size_bytes, 0))}
         </span>
       </div>
+
+      {retention && stored.length > 0 && (
+        <div
+          style={{
+            background: retention.expired_items > 0 ? "rgba(239, 68, 68, 0.12)" : "rgba(59, 130, 246, 0.08)",
+            border: `1px solid ${retention.expired_items > 0 ? "rgba(239, 68, 68, 0.35)" : "rgba(59, 130, 246, 0.25)"}`,
+            borderRadius: "10px",
+            padding: "16px 20px",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "18px" }}>🛡️</span>
+              <strong style={{ fontSize: "15px", color: "var(--text-bright)" }}>
+                Option C Safety Window: 30-Day Quarantine Retention Active
+              </strong>
+            </div>
+            <p style={{ margin: "6px 0 0 0", color: "var(--text-dim)", fontSize: "13px" }}>
+              {retention.expired_items > 0
+                ? `${retention.expired_items.toLocaleString()} file(s) (${formatBytes(retention.expired_bytes)}) have passed their 30-day safety buffer and are ready for permanent deletion.`
+                : `All quarantined files are currently protected under their 30-day safety period (oldest file is ${retention.oldest_item_age_days} days old).`}
+            </p>
+          </div>
+          {retention.expired_items > 0 && (
+            <button
+              className="btn btn-danger btn-small"
+              onClick={handlePurgeExpired}
+              disabled={busy}
+              style={{ fontWeight: 700, padding: "8px 16px" }}
+            >
+              🗑️ Purge {retention.expired_items.toLocaleString()} Expired Files ({formatBytes(retention.expired_bytes)})
+            </button>
+          )}
+        </div>
+      )}
 
       {stored.length === 0 ? (
         <div className="empty-state">
@@ -207,13 +271,14 @@ const deleteTotal = stored
             </div>
           </div>
 
-<table className="file-table">
+          <table className="file-table">
             <thead>
               <tr>
                 <th scope="col">Select</th>
                 <th scope="col">Original location</th>
                 <th scope="col">Size</th>
                 <th scope="col">Quarantined</th>
+                <th scope="col">Safety Buffer</th>
                 <th scope="col">Backup</th>
                 <th scope="col"></th>
               </tr>
@@ -221,6 +286,8 @@ const deleteTotal = stored
             <tbody>
               {stored.map((item) => {
                 const bs = backupStatus.get(item.id);
+                const daysIn = Math.floor((Date.now() - item.quarantined_at_ms) / (1000 * 60 * 60 * 24));
+                const daysLeft = Math.max(0, 30 - daysIn);
                 return (
                   <tr key={item.id}>
                     <td>
@@ -243,6 +310,19 @@ const deleteTotal = stored
                     </td>
                     <td>{formatBytes(item.size_bytes)}</td>
                     <td>{formatDate(item.quarantined_at_ms)}</td>
+                    <td>
+                      <span
+                        className="badge"
+                        style={{
+                          background: daysLeft === 0 ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                          color: daysLeft === 0 ? "#f87171" : "#34d399",
+                          border: `1px solid ${daysLeft === 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+                          fontSize: "11px",
+                        }}
+                      >
+                        {daysLeft === 0 ? "30d Expired (Purgeable)" : `${daysLeft}d safety buffer remaining`}
+                      </span>
+                    </td>
                     <td>
                       {bs?.hasBackup ? (
                         <span className="badge backup-protected">
@@ -271,7 +351,7 @@ const deleteTotal = stored
         </>
       )}
 
-{confirmDelete && (
+      {confirmDelete && (
         <ConfirmDialog
           title={`Permanently delete ${selected.size} file(s)?`}
           body={
@@ -345,4 +425,3 @@ const deleteTotal = stored
     </section>
   );
 }
-

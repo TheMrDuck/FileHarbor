@@ -30,6 +30,10 @@ import type {
   GenerateTestDataRequest,
   TestManifestSummary,
   VerificationResult,
+  AutoTriageSummary,
+  QuarantineRetentionStatus,
+  MergeGroupReport,
+  UpdateCheckResult,
 } from "./types";
 
 export const api = {
@@ -58,11 +62,43 @@ export const api = {
       page,
     }),
 
-  duplicateGroups: (sessionId: number, page = 0) =>
+  duplicateGroups: (sessionId: number, page = 0, scope?: string) =>
     invoke<{ items: DuplicateGroup[]; total: number }>("get_duplicate_groups", {
       sessionId,
       page,
+      scope,
     }),
+
+  getAutoTriageSummary: (sessionId: number) =>
+    invoke<AutoTriageSummary>("get_auto_triage_summary", { sessionId }),
+
+  applyAutoTriageQuarantine: (
+    sessionId: number,
+    protectCrossProject = true,
+    protectVcs = true,
+    protectCaches = true
+  ) =>
+    invoke<{ report: BatchReport }>("apply_auto_triage_quarantine", {
+      sessionId,
+      protectCrossProject,
+      protectVcs,
+      protectCaches,
+    }),
+
+  hardlinkMergeGroup: (groupId: number) =>
+    invoke<MergeGroupReport>("hardlink_merge_group", { groupId }),
+
+  checkQuarantineRetention: (retentionDays = 30) =>
+    invoke<QuarantineRetentionStatus>("check_quarantine_retention", { retentionDays }),
+
+  purgeExpiredQuarantine: (retentionDays = 30) =>
+    invoke<BatchReport>("purge_expired_quarantine", { retentionDays }),
+
+  checkForUpdates: () => invoke<UpdateCheckResult>("check_for_updates"),
+
+  downloadAndInstallUpdate: (assetUrl: string) =>
+    invoke<void>("download_and_install_update", { assetUrl }),
+
 
   rebuildAnalysis: (sessionId: number) =>
     invoke<void>("rebuild_analysis", { sessionId }),
