@@ -32,9 +32,11 @@ FileHarbor operates on **verifiable filesystem facts**. It never guesses or sile
 
 ### 1. Exact Duplicate & Empty File Detection
 - **Streaming SHA-256**: High-performance chunked hashing capable of processing large multi-gigabyte files safely without memory spikes.
-- **Rayon Parallelism**: Multi-threaded candidate hashing with fast size pre-filtering.
-- **Smart Keeping Recommendations**: Heuristics for shortest path, newest/oldest mtime, while never deleting without explicit user choice.
-- **Separate Empty File Audits**: Separates 0-byte placeholders from content duplicates (empty != useless).
+- **Rayon Parallelism & Live Streaming**: Multi-threaded candidate hashing with fast size pre-filtering and real-time progress metrics (files/s, hashes/s, live path stream).
+- **Cross-Project & Multi-Server Boundary Intelligence**: Detects distinct project roots (e.g., independent server deployments, game servers, git repos, virtualenvs) and warns before treating identical configuration files as duplicates.
+- **Path-Aware Canonical Recommendations**: Intelligently recommends keeping the canonical original copy while penalizing `- Copy` and redundant subdirectories.
+- **0-Byte Media Shield & Safety Audits**: Classifies empty files by safety level—separating corrupt zero-byte media (`0-Byte Corrupt Photo / Video`) from essential project placeholders (`__init__.py`, `.gitkeep`).
+- **Universal File Inspection**: Interactive `↗️ Open` (launch in default viewer) and `📁 Reveal` (File Explorer / Finder) actions on every candidate file before taking action.
 - **Persistent Hash Cache**: Cached hashes keyed by `(path, size, mtime)` to accelerate repeated scans.
 
 ### 2. Quarantine & Reversible Operations
@@ -51,7 +53,7 @@ FileHarbor operates on **verifiable filesystem facts**. It never guesses or sile
 
 ### 4. Health Patrol & Bit-Rot Scrubber
 - **Continuous Integrity Audits**: Verifies stored snapshots against their original manifest checksums.
-- **Early Bit-Rot Warning**: Identifies decaying storage sectors or silent data corruption before disaster recovery is needed.
+- **Early Bit-Rot Warning & Auto-Heal**: Identifies decaying storage sectors or silent data corruption before disaster recovery is needed.
 
 ### 5. Near-Duplicate & Perceptual Clustering
 - **Document Lineage (SimHash)**: 64-bit SimHash hamming distance calculation for tracking drafts, revisions, and near-identical documents.
@@ -61,9 +63,10 @@ FileHarbor operates on **verifiable filesystem facts**. It never guesses or sile
 - **Multi-Copy Assembly**: Reconstructs damaged files by stitching valid byte slices across corrupted duplicate copies.
 - **Header & EXIF Carving**: Recovers metadata, dimensions, and timestamps from truncated or partially damaged files.
 
-### 7. Triage & Privacy Auditing
-- **Folder Triage**: Categorizes loose clutter, stale downloads, ephemeral installers, and messy directories into structured category subfolders.
-- **Privacy Scanner**: Flags unencrypted private keys, API tokens, and credentials residing in scanned folders.
+### 7. Universal Folder Triage & Privacy Auditing
+- **Folder Triage & Clutter Organizer**: Categorizes loose clutter, stale installers, and unorganized files from any directory (Downloads, Desktop, USB drives) into structured subfolders with collision avoidance.
+- **Quick Folder Presets**: Instant one-click path resolution for Downloads, Desktop, and Documents.
+- **Privacy Shield & Air-Gapped Security**: 100% offline, zero-telemetry architecture that automatically shields sensitive keys (`.ssh`, `.aws`, `.kube`, crypto wallets) and credential vaults (`.kdbx`, `.pem`, `.key`) during all operations.
 
 ---
 
@@ -71,8 +74,9 @@ FileHarbor operates on **verifiable filesystem facts**. It never guesses or sile
 
 | What you are trying to do | Tool to Use | What it does |
 |---|---|---|
-| **Free up disk space safely** | **Analysis &rarr; New Scan &amp; Duplicates** | Discovers byte-for-byte exact SHA-256 duplicate files and empty files. Recommends which copy to keep without ever deleting anything automatically. |
-| **Clean a chaotic folder or Downloads** | **Action &amp; Triage &rarr; Folder Triage** | Analyzes loose files in any messy folder and neatly groups installers (`.exe`/`.msi`), archives, code, and documents into categorized subfolders. |
+| **Free up disk space safely** | **Analysis &rarr; New Scan &amp; Duplicates** | Discovers byte-for-byte SHA-256 duplicates with cross-server project boundary awareness, path-aware keep recommendations, and one-click inspection (`↗️ Open` / `📁 Reveal`). |
+| **Inspect & review zero-byte files** | **Analysis &rarr; Empty Files** | Audits 0-byte items with the 0-Byte Media Shield, separating corrupt images/videos from harmless placeholders and critical project markers. |
+| **Clean a chaotic folder or Downloads** | **Action &amp; Triage &rarr; Folder Triage** | Analyzes loose files in any messy folder (Downloads, Desktop, external drive) and neatly groups installers (`.exe`/`.msi`), archives, code, and documents into categorized subfolders. |
 | **Fix files with broken extensions (`.bin`/`.tmp`)** | **Health &amp; Recovery &rarr; Signature Rectifier** | Inspects magic bytes (PNG, JPEG, PDF, MP4, etc.) and restores the genuine file extension. |
 | **Organize nameless recovered photos (`FILE001.JPG`)** | **Health &amp; Recovery &rarr; Deep Carving** | Extracts EXIF camera metadata and capture dates to restore human-readable structured filenames. |
 | **Repair a file using two damaged copies** | **Health &amp; Recovery &rarr; Multi-Copy Reconstruction** | Scans byte sectors across two partially damaged copies and stitches the intact parts into one healthy file. |
@@ -129,10 +133,10 @@ npm run tauri build
 
 ## Testing & Quality Assurance
 
-FileHarbor includes comprehensive headless test suites covering core engine algorithms, hashing, duplicate detection, lifecycle quarantine, backup operations, and file carving. Tests execute strictly against isolated temporary directories:
+FileHarbor includes comprehensive headless test suites covering core engine algorithms, streaming hashing, duplicate detection, cross-project boundary detection, 0-byte media classification, lifecycle quarantine, verified backup operations, and file carving. Tests execute strictly against isolated temporary directories:
 
 ```bash
-# Run all workspace tests (77+ tests)
+# Run all workspace tests (86+ tests)
 cargo test --manifest-path src-tauri/Cargo.toml --workspace
 
 # Frontend typecheck & bundle verification
